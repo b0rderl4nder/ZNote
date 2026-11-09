@@ -18,7 +18,8 @@ export async function record(operation) {
   try {
     const item = await operation();
     if(item.kind==='remote-capture'){await chrome.storage.local.set({lastResult:{ok:true,message:'已加入远程图片采集，可在任务中查看进度',time:Date.now()}});await chrome.action.setBadgeText({text:'…'});return item;}
-    await chrome.storage.local.set({ lastResult: { ok: true, message: item.kind==='download' ? '已加入后台下载，可在任务中查看进度' : item.duplicate ? '此知识库已收录，已补充来源' : '已保存到知识库', itemId: item.kind==='download'?null:item.id, time: Date.now() } });
+    if (item.kind === 'download') return item;
+    await chrome.storage.local.set({ lastResult: { ok: true, message: item.duplicate ? '此知识库已收录，已补充来源' : '已保存到知识库', itemId: item.id, time: Date.now() } });
     await chrome.action.setBadgeBackgroundColor({ color: '#5865ce' }); await chrome.action.setBadgeText({ text: '✓' });
     return item;
   } catch (error) {

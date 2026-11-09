@@ -12,7 +12,7 @@ async function load() {
 }
 async function save(tasks) { await chrome.storage.session.set({ [KEY]: tasks }); }
 
-async function ensureOffscreen() {
+export async function ensureOffscreen() {
   const url = chrome.runtime.getURL(OFFSCREEN_PATH);
   const exists = 'getContexts' in chrome.runtime
     ? (await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [url] })).length > 0
@@ -78,12 +78,23 @@ export async function updateMediaTask(patch) {
   if (!task) return null;
   Object.assign(task, patch, { updated: Date.now() });
   await save(tasks);
+  if (task.action === 'download' && ['complete', 'failed'].includes(task.status)) {
+    const ok = task.status === 'complete';
+    await chrome.storage.local.set({ lastResult: { ok, message: task.message, time: task.updated } });
+    await chrome.action.setBadgeBackgroundColor({ color: ok ? '#5865ce' : '#af453e' });
+    await chrome.action.setBadgeText({ text: ok ? '✓' : '!' });
+  }
   chrome.tabs.sendMessage(task.tabId, { type: 'media-task-update', task }, { frameId: 0 }).catch(() => {});
   return task;
 }
 
 export async function downloadMediaBlob(message) {
-  if (!/^blob:chrome-extension:\/\//.test(message.url || '')) throw new Error('后台下载地址无效');
+  if (message.browserFile) {
+    const url = new URL(message.url);
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new Error('浏览器下载地址无效');
+  } else if (!message.url?.startsWith('blob:' + chrome.runtime.getURL(''))) {
+    throw new Error('后台下载地址无效');
+  }
   let id, settled = false, downloadListener, timer;
   const completion = new Promise((resolve, reject) => {
     downloadListener = delta => {
