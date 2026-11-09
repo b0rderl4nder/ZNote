@@ -42,6 +42,12 @@ async function process(task) {
   if(resource.kind==='youtube') {
     item=await captureYoutube(resource,action,config,{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(900000)]),
       onProgress:message=>update(task,'running',message),download:blob=>downloadBlob(blob,task)});
+  } else if (resource.kind === 'browser-file' && action === 'download') {
+    const result = await chrome.runtime.sendMessage({
+      target: 'background', type: 'media-task-download', browserFile: true,
+      url: resource.url, filename: resource.filename,
+    });
+    if (!result?.ok) throw Error(result?.error || '浏览器下载失败');
   } else if(resource.kind==='work') {
     const result=await downloadWork(resource,config,(blob,name)=>downloadBlob(blob,task,name),message=>update(task,'running',message));
     await update(task,'complete',`${result.count} 项下载完成`);return;

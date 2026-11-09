@@ -57,7 +57,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if(sender.id===chrome.runtime.id&&message.target==='background'&&message.type==='media-task-update'){
     updateMediaTask(message.task).then(task=>reply({ok:true,task}),error=>reply({ok:false,error:error.message}));return true;
   }
-  if(sender.id===chrome.runtime.id&&message.target==='background'&&message.type==='media-task-download'){
+  if(sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('media-worker.html')&&message.target==='background'&&message.type==='media-task-download'){
     downloadMediaBlob(message).then(value=>reply({ok:true,value}),error=>reply({ok:false,error:error.message}));return true;
   }
   if(message.type==='inline-gallery-load'&&sender.id===chrome.runtime.id){inlineGalleryTicket(sender).then(value=>reply({ok:true,value}),e=>reply({ok:false,error:e.message}));return true;}

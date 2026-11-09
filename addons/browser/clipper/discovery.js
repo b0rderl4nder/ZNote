@@ -144,13 +144,10 @@ export async function resourceAction(resource, action, tabId) {
     return {task,message:'正在采集当前 YouTube 视频的完整音画'};
   }
   if (action === "download" && !['video', 'hls'].includes(resource.kind)) {
-    await chrome.downloads.download({
-      url: resource.url,
-      filename: cleanFilename(resource),
-      conflictAction: "uniquify",
-      saveAs: false,
-    });
-    return { message: "已交给浏览器下载" };
+    const task = await startMediaTask({
+      ...resource, kind: 'browser-file', filename: cleanFilename(resource),
+    }, 'download', tabId, config);
+    return { message: '浏览器正在下载…', task };
   }
   if (action === "save" && resource.kind === "image") {
     const route=await connection(config);

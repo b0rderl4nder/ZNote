@@ -30,6 +30,17 @@
     // the hover region, so opening under a stationary mouse cannot lose hover.
     style.textContent+=`.tools[data-compact=false]::after{content:'';position:absolute;top:0;bottom:0;width:9px;pointer-events:auto}.tools[data-compact=false][data-edge=right]::after{right:-9px}.tools[data-compact=false][data-edge=left]::after{left:-9px}.tools[data-edge=free]::after{display:none}`;
     style.textContent+=`.actions [data-tool]{min-width:0;overflow:hidden;text-overflow:ellipsis}.actions [data-tool="video"]{flex:0 1 auto}.actions [data-tool="work"]{background:#3a4556!important}.menu{max-height:calc(100dvh - 160px);overflow:auto;overscroll-behavior:contain}.menu .help{position:fixed;width:min(300px,calc(100vw - 16px));margin:0;padding:14px;border:1px solid #435063;border-radius:12px;background:#191d24;box-shadow:0 6px 24px #0005}`;
+    style.textContent+=`
+      .tools[data-compact=true]>.feedback[data-result=true]:not([hidden]) {
+        display:flex!important; position:absolute; bottom:0; right:calc(100% + 8px);
+        width:max-content; max-width:min(300px,calc(100vw - 60px));
+        border:1px solid #435063; border-radius:12px; background:#191d24;
+        box-shadow:0 4px 16px #0004;
+      }
+      .tools[data-edge=left][data-compact=true]>.feedback[data-result=true] {
+        left:calc(100% + 8px); right:auto;
+      }
+    `;
     actions=document.createElement('div');actions.className='actions';feedback=document.createElement('div');feedback.className='feedback';feedback.hidden=true;feedback.setAttribute('role','status');
     text=document.createElement('span');close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','关闭采集提示');close.onclick=()=>{if(!progress.hidden)dismissed.add(owner);clear();};
     progress=document.createElement('progress');progress.className='progress';progress.setAttribute('aria-label','采集进度');progress.hidden=true;
@@ -111,7 +122,26 @@
     host.style.setProperty('right','auto','important');host.style.setProperty('bottom','auto','important');host.style.setProperty('left',x+'px','important');host.style.setProperty('top',y+'px','important');emitLayout();
   }
   function persistPosition(){const b=host.getBoundingClientRect();position={x:b.left,y:b.top,edge};request('page-tools-position',{position}).catch(e=>notice(e.message,{error:true,key:'tools'}));}
-  function notice(message,{error=false,key='post',busy=false}={}){mount();if(busy&&dismissed.has(key))return;if(!busy)dismissed.delete(key);clearTimeout(timer);owner=key;text.textContent=message;feedback.dataset.error=String(error);feedback.hidden=false;progress.hidden=!busy;tab.dataset.state=busy?'busy':error?'error':'done';tab.title='ZNote · '+message;tab.setAttribute('aria-label','展开 ZNote 采集工具：'+message);root.querySelector('.dock-announcement').textContent=message;if(!busy)timer=setTimeout(()=>{if(!compact)clear(key)},error?20000:6000);}
+  function notice(message,{error=false,key='post',busy=false}={}){
+    mount();
+    if(busy&&dismissed.has(key))return;
+    if(!busy)dismissed.delete(key);
+    clearTimeout(timer);
+    owner=key;
+    text.textContent=message;
+    feedback.dataset.error=String(error);
+    feedback.dataset.result=String(!busy);
+    feedback.hidden=false;
+    progress.hidden=!busy;
+    tab.dataset.state=busy?'busy':error?'error':'done';
+    tab.title='ZNote · '+message;
+    tab.setAttribute('aria-label','展开 ZNote 采集工具：'+message);
+    root.querySelector('.dock-announcement').textContent=message;
+    if(!busy)timer=setTimeout(()=>{
+      feedback.dataset.result='false';
+      if(!compact)clear(key);
+    },error?20000:8000);
+  }
   function clear(key) { if(!feedback || (key && key!==owner))return;clearTimeout(timer);feedback.hidden=true;owner=null;delete tab.dataset.state;tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';tab.setAttribute('aria-label','展开 ZNote 采集工具');root.querySelector('.dock-announcement').textContent=''; }
   async function track(job,kind='captures'){
     if(['download','media'].includes(job?.kind))kind=job.kind;
@@ -159,7 +189,14 @@
     }
     refreshMode();
   }
-  chrome.runtime.onMessage.addListener(message=>{if(message.type==='media-settings-changed')refreshSettings();if(message.type==='media-page-changed'){updateWork();if(!work?.disabled)clear('work');}});
+  chrome.runtime.onMessage.addListener(message=>{
+    if(message.type==='media-settings-changed')refreshSettings();
+    if(message.type==='media-page-changed'){updateWork();if(!work?.disabled)clear('work');}
+    const task=message.type==='media-task-update'&&message.task;
+    if(task?.action==='download'&&['complete','failed'].includes(task.status)){
+      notice(task.status==='failed'?`下载失败 · ${task.message}`:task.message,{error:task.status==='failed',key:'download'});
+    }
+  });
   mount();request('page-tools-position').then(result=>{if(result.position)place(result.position);}).catch(()=>{});updateWork();refreshSettings();
   new MutationObserver(()=>{if(host&&!host.isConnected)mount();}).observe(document.documentElement,{childList:true});
 })();
