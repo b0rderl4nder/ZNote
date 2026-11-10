@@ -6,8 +6,8 @@ import sharp from 'sharp';
 import {createApp} from '../server/app.js';
 const dir=await mkdtemp(resolve('artifacts/paw-controls-')),runtime=createApp({dataDir:join(dir,'data'),staticDir:resolve('dist')}),server=runtime.app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port;
 const images=await Promise.all(['#7188bc','#c78092','#74a38d','#b59b6b','#a170d0','#d08a60','#47879c'].map(background=>sharp({create:{width:400,height:300,channels:3,background}}).png().toBuffer()));
-const ext=resolve('addons/browser/clipper');await mkdir(join(dir,'profile','Default'),{recursive:true});await mkdir(join(dir,'downloads'));await writeFile(join(dir,'profile','Default','Preferences'),JSON.stringify({download:{default_directory:join(dir,'downloads'),prompt_for_download:false}}));
-const context=await chromium.launchPersistentContext(join(dir,'profile'),{channel:'msedge',headless:true,hasTouch:true,viewport:{width:1366,height:900},args:[`--disable-extensions-except=${ext}`,`--load-extension=${ext}`]}),worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker'),page=await context.newPage(),cdp=await context.newCDPSession(page);await cdp.send('Browser.setDownloadBehavior',{behavior:'default'});
+const ext=resolve(process.env.LIVE_EXTENSION||'addons/browser/clipper');await mkdir(join(dir,'profile','Default'),{recursive:true});await mkdir(join(dir,'downloads'));await writeFile(join(dir,'profile','Default','Preferences'),JSON.stringify({download:{default_directory:join(dir,'downloads'),prompt_for_download:false}}));
+const context=await chromium.launchPersistentContext(join(dir,'profile'),{channel:'msedge',headless:true,hasTouch:true,locale:'zh-CN',timezoneId:'Asia/Shanghai',viewport:{width:1366,height:900},args:[`--disable-extensions-except=${ext}`,`--load-extension=${ext}`]}),worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker'),page=await context.newPage(),cdp=await context.newCDPSession(page);await cdp.send('Browser.setDownloadBehavior',{behavior:'default'});
 let fail=true,delayWork=false;const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const html=`<!doctype html><meta charset="utf-8"><title>Paw 套图交互验收</title><style>body{font:16px system-ui;background:#252737;color:#eee;margin:35px}figure{margin:20px 0;display:inline-block;margin-right:20px}img{width:220px;height:165px;object-fit:cover}button{padding:12px}</style><button id="next">下一篇（不刷新）</button><main><h1>第一部作品</h1><div id="pictures"></div></main><script>
 const url=(work,i,preview)=>'https://'+(preview?'img':'file')+'.pawchive.pw/'+(preview?'thumbnail/':'')+'data/'+work+'_p'+i+'.png';
@@ -23,9 +23,25 @@ try{
  await worker.evaluate(()=>chrome.storage.local.set({saveAction:'download'}));
  await page.locator('#cover').hover();await toolbar.waitFor();assert.equal(await toolbar.getByRole('button',{name:'下载此作品套图',exact:true}).count(),1,'Paw keeps one subordinate suite-download entry');assert.equal(await toolbar.getByRole('button',{name:'下载当前图片',exact:true}).count(),0,'Paw quick actions stay centered on library intake');const pages=context.pages().length;await toolbar.getByRole('button',{name:'下载此作品套图',exact:true}).click();
  let frame=await activeFrame();await frame.locator('#save-status').filter({hasText:'已下载 2 / 3 张，1 张失败'}).waitFor();assert.equal(context.pages().filter(p=>p.url()!=='edge://downloads-hub/').length,pages,'batch download stays on source page: '+context.pages().map(p=>p.url()).join(', '));
- await frame.getByRole('button',{name:'收起下载窗口'}).click();await badge.click();await frame.getByRole('button',{name:'重试未完成'}).waitFor();fail=false;await frame.getByRole('button',{name:'重试未完成'}).click();await frame.getByRole('button',{name:'全部已下载'}).waitFor();
+ const tools=page.locator('[data-znote-page-tools]'),receipt=tools.locator('.download-receipt');
+ await frame.getByRole('button',{name:'收起下载窗口'}).click();
+ await receipt.filter({hasText:'下载失败'}).filter({hasText:'已下载 2 / 3 张'}).waitFor({timeout:6000});
+ await page.screenshot({path:join(dir,'paw-download-failure.png')});
+ await receipt.getByRole('button',{name:'关闭下载提示'}).tap();
+ await badge.click();await frame.getByRole('button',{name:'重试未完成'}).waitFor();fail=false;await frame.getByRole('button',{name:'重试未完成'}).click();
+ await frame.getByRole('button',{name:'收起下载窗口'}).click();
+ await receipt.filter({hasText:'下载完成'}).filter({hasText:'已下载 3 / 3 张'}).waitFor();
+ assert.ok(await panel.isHidden(),'completion is readable while the gallery panel is closed');
+ assert.ok(await receipt.evaluate(card=>{
+   const r=card.getBoundingClientRect();
+   return r.width>=280&&r.right<=document.documentElement.clientWidth&&card.contains(card.getRootNode().elementFromPoint(r.left+r.width/2,r.top+r.height/2));
+ }),'download result is fully inside the viewport and on top');
+ const [resultBox,badgeBox]=await Promise.all([tools.locator('.download-result').boundingBox(),badge.boundingBox()]);
+ assert.ok(resultBox&&badgeBox&&(resultBox.x>=badgeBox.x+badgeBox.width||resultBox.x+resultBox.width<=badgeBox.x||resultBox.y>=badgeBox.y+badgeBox.height||resultBox.y+resultBox.height<=badgeBox.y),'Paw badge does not cover the persistent result');
+ await page.screenshot({path:join(dir,'paw-download-receipt.png')});
+ await receipt.getByRole('button',{name:'关闭下载提示'}).tap();
  const downloaded=await worker.evaluate(()=>chrome.downloads.search({}));assert.equal(downloaded.filter(d=>d.state==='complete').length,3);for(const d of downloaded.filter(d=>d.state==='complete')){const i=Number(d.filename.match(/(\d{3})\.png$/)[1])-1;assert.deepEqual(await readFile(d.filename),images[i]);}
- await panel.getByRole('button',{name:'收起套图面板',exact:true}).click();await page.locator('#next').click();await page.locator('#cover').hover();await page.locator('#page3').waitFor();await preview.getByText('1 / 4',{exact:true}).waitFor();
+ await page.locator('#next').click();await page.locator('#cover').hover();await page.locator('#page3').waitFor();await preview.getByText('1 / 4',{exact:true}).waitFor();
  await worker.evaluate(()=>chrome.storage.local.set({saveAction:'save'}));
  assert.ok(await panel.isHidden(),'navigation does not force open the task panel');await page.locator('#cover').hover();await toolbar.getByRole('button',{name:'此作品整组入库',exact:true}).click();await panel.locator('iframe').nth(1).waitFor();frame=await activeFrame();await frame.getByRole('button',{name:'全部已入库',exact:true}).waitFor({timeout:20000});
  const rows=runtime.db.prepare('SELECT * FROM items').all();assert.equal(rows.length,4);assert.ok(rows.every(r=>r.collection_id===library.id&&r.group_key==='paw:fanbox:1:2'&&r.source_url==='https://pawchive.pw/fanbox/user/1/post/2'));

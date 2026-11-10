@@ -1,6 +1,7 @@
 import { collectGallery, collectVideo, record, capturePage, startCaptureRegion, finishCaptureRegion } from './actions.js';
 import { api, settings, serverUrl, connection } from './client.js';
 import {getDownloadJob} from './media-tasks.js';
+import {readDownloadReceipt,dismissDownloadReceipt,publishDownloadReceipt} from './download-receipts.js';
 
 // Content scripts act only on their own top frame. Never trust a page tabId,
 // server URL or arbitrary API path supplied in a message.
@@ -8,6 +9,11 @@ export async function pageAction(message, sender) {
   const tab = await chrome.tabs.get(sender.tab.id);
   const page = new URL(sender.url);
   if (!/^https?:$/.test(page.protocol) || page.origin !== new URL(tab.url).origin) throw Error('当前页面已切换，请重试');
+  if(message.type==='page-tools-receipt'){
+    if(message.dismiss)await dismissDownloadReceipt(tab.id,message.dismiss);
+    else if(message.receipt)await publishDownloadReceipt(tab.id,page.origin,message.receipt);
+    return {receipt:await readDownloadReceipt(tab.id,page.origin)};
+  }
   if (message.type === 'page-tools-position') {
     if (message.position !== undefined) {
       const p=message.position;

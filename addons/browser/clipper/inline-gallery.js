@@ -21,6 +21,18 @@ globalThis.ZNoteInlineGallery=class {
     this.select.style.cssText='font:inherit;color:#edf0fa;background:#22283b;border:1px solid #4a5571;border-radius:8px;padding:7px;color-scheme:dark';
     this.badge=document.createElement('button');this.badge.className='inline-save-badge';this.badge.hidden=!persistent;this.badge.textContent=persistent?'▦ 套图助手':'查看入库';this.badge.onclick=e=>{if(e.isTrusted)this.show();};
     root.append(this.panel,this.badge);
+    let dock;
+    const placeBadge=()=>{
+      this.badge.style.right='18px';
+      this.badge.style.bottom='76px';
+      if(this.badge.hidden||!dock?.width)return;
+      const badge=this.badge.getBoundingClientRect();
+      if(badge.left>=dock.right||badge.right<=dock.left||badge.top>=dock.bottom||badge.bottom<=dock.top)return;
+      if(dock.left>=badge.width+16)this.badge.style.right=(document.documentElement.clientWidth-dock.left+8)+'px';
+      else this.badge.style.bottom=Math.max(8,document.documentElement.clientHeight-dock.top+8)+'px';
+    };
+    globalThis.ZNotePageTools?.onLayout((_height,anchor)=>{dock=anchor;placeBadge();});
+    new ResizeObserver(placeBadge).observe(this.badge);
     window.addEventListener('message',e=>{const m=e.data,j=this.jobs.get(m?.id);if(!j||e.source!==j.frame.contentWindow||e.origin!==new URL(j.frame.src).origin)return;
       if(m.type==='znote-inline-minimize')this.minimize();
       if(m.type==='znote-inline-progress'){j.action=m.action;j.running=!!m.running;j.done=Number(m.done)||0;j.total=Number(m.total)||0;j.option.textContent=String(m.title||'作品').slice(0,80)+` · ${j.done}/${j.total}`;if(Number.isFinite(m.height)&&m.height>0)j.frame.style.height=`min(${Math.max(260,Math.min(750,m.height))}px,calc(100dvh - 100px))`;this.updateBadge();}

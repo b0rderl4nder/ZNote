@@ -28,7 +28,10 @@ export async function downloadBatch(group,persist,announce,rows,startNow){
     finally{
       running=false;group.busy=false;await persist().catch(e=>lastError=e.message);draw();
       const done=group.states.filter(s=>s==='done').length,failed=group.states.filter(s=>s==='failed').length;
-      $('save-status').textContent=`${controller.signal.aborted?'已停止。':''}已下载 ${done} / ${group.images.length} 张${failed?`，${failed} 张失败`:''}${lastError?'：'+lastError:done===group.images.length?'，保存在下载目录的 ZNote 文件夹。':''}`;
+      const message=`${controller.signal.aborted?'已停止。':''}已下载 ${done} / ${group.images.length} 张${failed?`，${failed} 张失败`:''}${lastError?'：'+lastError:done===group.images.length?'，保存在下载目录的 ZNote 文件夹。':''}`;
+      $('save-status').textContent=message;
+      const status=done===group.images.length?'complete':controller.signal.aborted?'stopped':'failed';
+      chrome.runtime.sendMessage({type:'inline-gallery-download-receipt',receipt:{id:crypto.randomUUID(),status,message}}).catch(()=>{});
     }
   };
   $('save').onclick=e=>{if(e.isTrusted)start();};$('save-cancel').onclick=e=>{if(e.isTrusted)controller?.abort();};

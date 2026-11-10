@@ -1,4 +1,5 @@
 import { settings, prepareImageRequests, connection } from './client.js';
+import { publishDownloadReceipt } from './download-receipts.js';
 
 const KEY = 'mediaTasks';
 const OFFSCREEN_PATH = 'media-worker.html';
@@ -37,8 +38,9 @@ export async function startMediaTask(resource, action, tabId, providedConfig = n
   const existing = Object.values(tasks).find(task =>
     task.tabId === tabId && task.resourceId === resource.id && task.action === action && ['queued', 'running'].includes(task.status));
   if (existing) return existing;
+  const origin = new URL((await chrome.tabs.get(tabId)).url).origin;
   const task = {
-    id: crypto.randomUUID(), tabId, resourceId: resource.id,
+    id: crypto.randomUUID(), tabId, origin, resourceId: resource.id,
     title: resource.title, action, status: 'queued', message: '正在加入后台任务…',
     created: Date.now(), updated: Date.now(),
   };
@@ -79,10 +81,7 @@ export async function updateMediaTask(patch) {
   Object.assign(task, patch, { updated: Date.now() });
   await save(tasks);
   if (task.action === 'download' && ['complete', 'failed'].includes(task.status)) {
-    const ok = task.status === 'complete';
-    await chrome.storage.local.set({ lastResult: { ok, message: task.message, time: task.updated } });
-    await chrome.action.setBadgeBackgroundColor({ color: ok ? '#5865ce' : '#af453e' });
-    await chrome.action.setBadgeText({ text: ok ? '✓' : '!' });
+    await publishDownloadReceipt(task.tabId, task.origin, task).catch(() => {});
   }
   chrome.tabs.sendMessage(task.tabId, { type: 'media-task-update', task }, { frameId: 0 }).catch(() => {});
   return task;
