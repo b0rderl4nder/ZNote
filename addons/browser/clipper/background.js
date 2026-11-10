@@ -8,8 +8,9 @@ import {contextMenuEntries} from './entry-menu.js';
 import {requestAt,normalizeServer} from './connection-routes.js';
 import {inlinePreviewMessage} from './inline-preview-ticket.js';
 import {observeYoutubePlayback,forgetYoutubePlayback} from './youtube-session.js';
+import {publishDownloadReceipt,forgetDownloadReceipt} from './download-receipts.js';
 chrome.webRequest.onBeforeRequest.addListener(details=>{void observeYoutubePlayback(details)?.catch(()=>{});},{urls:['https://*.googlevideo.com/videoplayback*']},['requestBody']);
-chrome.tabs.onRemoved.addListener(tabId=>{void forgetYoutubePlayback(tabId).catch(()=>{});});
+chrome.tabs.onRemoved.addListener(tabId=>{void forgetYoutubePlayback(tabId).catch(()=>{});void forgetDownloadReceipt(tabId).catch(()=>{});});
 let directVideoBusy = false;
 async function setupContextMenus() {
   const config=await settings();
@@ -50,7 +51,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if(sender.id===chrome.runtime.id&&['inline-preview-load','inline-preview-release'].includes(message.type)){
     inlinePreviewMessage(message,sender).then(value=>reply({ok:true,...value}),error=>reply({ok:false,error:error.message}));return true;
   }
-  if(sender.id===chrome.runtime.id&&sender.tab&&sender.frameId===0&&['page-tools-action','page-tools-status','page-tools-position','region-capture-selection'].includes(message.type)){
+  if(sender.id===chrome.runtime.id&&sender.tab&&sender.frameId===0&&['page-tools-action','page-tools-status','page-tools-position','page-tools-receipt','region-capture-selection'].includes(message.type)){
     pageAction(message,sender).then(value=>reply({ok:true,...value}),error=>reply({ok:false,error:error.message}));return true;
   }
   if(message.type==='znote-post-ready'&&sender.id===chrome.runtime.id&&sender.tab&&sender.frameId===0){reply({ok:true,protocol:1,version:chrome.runtime.getManifest().version});return;}
@@ -61,6 +62,13 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     downloadMediaBlob(message).then(value=>reply({ok:true,value}),error=>reply({ok:false,error:error.message}));return true;
   }
   if(message.type==='inline-gallery-load'&&sender.id===chrome.runtime.id){inlineGalleryTicket(sender).then(value=>reply({ok:true,value}),e=>reply({ok:false,error:e.message}));return true;}
+  if(message.type==='inline-gallery-download-receipt'&&sender.id===chrome.runtime.id){
+    (async()=>{
+      const {group}=await inlineGalleryTicket(sender,{consume:false});
+      if(group.action!=='download')throw Error('该任务不属于下载');
+      await publishDownloadReceipt(sender.tab.id,new URL(sender.tab.url).origin,message.receipt);
+    })().then(()=>reply({ok:true}),e=>reply({ok:false,error:e.message}));return true;
+  }
   if(message.type==='znote-connect-remote'&&sender.id===chrome.runtime.id&&sender.tab&&sender.frameId===0){
     (async()=>{
       const server=normalizeServer(new URL(sender.url).origin);

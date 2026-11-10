@@ -3,10 +3,16 @@
   if (window !== top || !/^https?:$/.test(location.protocol) || globalThis.ZNotePageTools) return;
   let host, root, bar, actions, feedback, text, close, timer, owner, menu, more, progress, position, closeMenu, suspended=false, allowed=false, saveAction='save';
   let tab, compact=true, edge='right', idleTimer, hoverTimer, dragging, suppressTabClick=false, pointerInside=false, hoverSuppressed=false;
-  let lastDownload;
+  let siteAllowed=false, receiptCard, receiptTitle, receiptDetail, lastDownload, receiptOpen=false, receiptTimer;
   const layout=new Set();
   const dismissed=new Set();
-  const refresh = () => { bar.hidden = !allowed || suspended; };
+  const refresh = () => {
+    bar.hidden = !allowed || suspended;
+    const show=siteAllowed&&!suspended&&receiptOpen;
+    if(!show&&receiptCard.matches(':popover-open'))receiptCard.hidePopover();
+    receiptCard.hidden=!show;
+    if(show&&receiptCard.isConnected&&!receiptCard.matches(':popover-open'))receiptCard.showPopover();
+  };
   function viewport(){
     const box=document.compatMode==='BackCompat'?document.body:document.documentElement;
     return {width:box?.clientWidth||innerWidth,height:box?.clientHeight||innerHeight};
@@ -48,11 +54,26 @@
       }
       .tools[data-compact=true][data-dragging=true]>.feedback[data-result=true] { visibility:hidden }
       .edge-tab .download-result { display:none }
-      .tools[data-compact=true][data-download-result] { width:100px; max-width:100px; background:#212936 }
-      .tools[data-compact=true][data-download-result]>.edge-tab { display:grid; place-items:center; height:38px }
-      .tools[data-download-result] .edge-tab .download-result { display:block; font:600 12px/1 system-ui }
+      .tools[data-compact=true][data-download-result] { width:120px; max-width:120px; background:#222e42 }
+      .tools[data-compact=true][data-download-result]>.edge-tab { display:grid; place-items:center; height:42px }
+      .tools[data-download-result] .edge-tab .download-result { display:block; font:650 15px/1 system-ui }
       .tools[data-download-result] .edge-tab .dock-mark, .tools[data-download-result] .edge-tab .dot { display:none }
       .tools[data-download-result=error] .edge-tab { color:#f0c4a4 }
+      .download-receipt {
+        position:fixed; inset:auto 16px min(132px,30dvh) auto; margin:0; width:312px; max-width:calc(100vw - 32px);
+        padding:13px 14px; max-height:min(46dvh,230px); overflow:auto; overscroll-behavior:contain;
+        display:grid; grid-template-columns:32px 1fr 30px; gap:10px; align-items:start;
+        color:#f6f8fc; background:#202b3d; border:1px solid #8199c5; border-radius:13px;
+        box-shadow:0 7px 28px #0007; pointer-events:auto;
+      }
+      .download-receipt[data-status=failed], .download-receipt[data-status=stopped] { border-color:#d39e79; background:#30251f }
+      .receipt-icon { width:32px; height:32px; display:grid; place-items:center; border-radius:9px; background:#405677; font:700 18px/1 system-ui }
+      .download-receipt[data-status=failed] .receipt-icon, .download-receipt[data-status=stopped] .receipt-icon { background:#674735 }
+      .download-receipt strong { display:block; font:700 17px/1.35 system-ui }
+      .download-receipt p { color:#e1e6f0; margin:4px 0 0; font:14px/1.55 system-ui; overflow-wrap:anywhere }
+      .download-receipt button { width:30px; height:32px; background:#ffffff15; border:0; border-radius:7px; color:inherit; font:20px/1 system-ui; cursor:pointer }
+      .download-receipt button:hover { background:#ffffff2a }
+      .download-receipt button:focus-visible { outline:2px solid #c2d5fa }
     `;
     actions=document.createElement('div');actions.className='actions';feedback=document.createElement('div');feedback.className='feedback';feedback.hidden=true;feedback.setAttribute('role','status');
     text=document.createElement('span');close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','关闭采集提示');close.onclick=()=>{if(!progress.hidden)dismissed.add(owner);clear();};
@@ -60,7 +81,12 @@
     feedback.append(text,close,progress);menu=document.createElement('div');menu.className='menu';menu.hidden=true;
     tab=document.createElement('button');tab.type='button';tab.className='edge-tab';tab.innerHTML='<span class="dock-mark" aria-hidden="true">Z</span><span class="dot" aria-hidden="true"></span><span class="download-result" aria-hidden="true"></span>';tab.setAttribute('aria-label','展开 ZNote 采集工具');tab.setAttribute('aria-expanded','false');tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';
     const announcement=document.createElement('span');announcement.className='dock-announcement';announcement.setAttribute('aria-live','polite');
-    bar.append(tab,actions,menu,feedback,announcement);root.append(style,bar);document.documentElement.append(host);
+    receiptCard=document.createElement('section');receiptCard.className='download-receipt';receiptCard.hidden=true;
+    receiptCard.setAttribute('popover','manual');receiptCard.setAttribute('role','status');
+    receiptCard.innerHTML='<span class="receipt-icon" aria-hidden="true"></span><div><strong></strong><p></p></div><button type="button" aria-label="关闭下载提示">×</button>';
+    receiptTitle=receiptCard.querySelector('strong');receiptDetail=receiptCard.querySelector('p');
+    receiptCard.querySelector('button').onclick=e=>{if(e.isTrusted)dismissReceipt();};
+    bar.append(tab,actions,menu,feedback,announcement);root.append(style,bar,receiptCard);document.documentElement.append(host);
     const drag=document.createElement('button');drag.type='button';drag.className='drag';drag.textContent='⠿';drag.setAttribute('aria-label','拖动采集工具栏');drag.title='拖动移动；方向键微调';actions.append(drag);
     more=document.createElement('button');more.type='button';more.className='more';more.textContent='⋯';more.setAttribute('aria-label','更多采集方式');more.setAttribute('aria-expanded','false');actions.append(more);
     more.onclick=e=>{if(!e.isTrusted)return;if(!menu.hidden){closeMenu();return;}menu.hidden=false;more.setAttribute('aria-expanded','true');connect();};
@@ -88,7 +114,7 @@
     linkToggle.onclick=()=>{linkForm.hidden=!linkForm.hidden;linkToggle.setAttribute('aria-expanded',String(!linkForm.hidden));if(!linkForm.hidden)linkForm.querySelector('textarea').focus();};
     linkForm.onsubmit=async e=>{e.preventDefault();if(!e.isTrusted)return;const input=linkForm.querySelector('textarea'),button=linkForm.querySelector('button');if(!input.value.trim()){input.focus();return;}button.disabled=true;closeMenu();try{dismissed.delete('work');globalThis.ZNotePageTools.progress('正在提交作品链接…',{key:'work'});const result=await request('page-tools-action',{action:'link',text:input.value});await track(result.job);}catch(error){notice(error.message,{error:true,key:'work'});}finally{button.disabled=false;}};
     const hint=document.createElement('button');hint.type='button';hint.className='help-button';hint.textContent='?';hint.setAttribute('aria-label','页面采集说明');hint.setAttribute('aria-expanded','false');menu.querySelector('.menu-heading').append(hint);
-    const help=menu.querySelector('.help');help.textContent='采集当前作品支持 X、小红书、B 站及能公开读取的图集和网页；需要登录的作品可用页面正文或媒体嗅探。框选截图：拖动选择，Enter 保存、Esc 取消。鼠标掠过边缘 Z 页签自动展开，也可点击展开；拖动页签或把手移动，靠边松手吸附收起；方向键微调，位置自动记住。移开鼠标后闲置四秒自动收起，菜单和视频面板使用中保持展开。下载完成或失败后，收起的页签会保留文字，展开可查看详情和关闭提示。进度显示服务器实际阶段和数量，不估算下载百分比。';
+    const help=menu.querySelector('.help');help.textContent='采集当前作品支持 X、小红书、B 站及能公开读取的图集和网页；需要登录的作品可用页面正文或媒体嗅探。框选截图：拖动选择，Enter 保存、Esc 取消。鼠标掠过边缘 Z 页签自动展开，也可点击展开；拖动页签或把手移动，靠边松手吸附收起；方向键微调，位置自动记住。移开鼠标后闲置四秒自动收起，菜单和视频面板使用中保持展开。下载结束会弹出结果卡片，之后收起的页签保留文字，展开可再次查看。进度显示服务器实际阶段和数量，不估算下载百分比。';
     let pinned=false;const show=()=>{help.hidden=false;hint.setAttribute('aria-expanded','true');const a=hint.getBoundingClientRect(),b=help.getBoundingClientRect();help.style.left=Math.max(8,Math.min(a.left,innerWidth-b.width-8))+'px';help.style.top=Math.max(8,Math.min(a.top>b.height+16?a.top-b.height-8:a.bottom+8,innerHeight-b.height-8))+'px';},hide=()=>{help.hidden=true;hint.setAttribute('aria-expanded','false');};
     hint.onclick=()=>{pinned=!pinned;pinned?show():hide();};hint.onpointerenter=e=>{if(e.pointerType==='mouse')show();};hint.onpointerleave=e=>{if(e.pointerType==='mouse'&&!pinned)hide();};hint.onfocus=show;hint.onblur=()=>{if(!pinned)hide();};
     closeMenu=()=>{menu.hidden=true;more.setAttribute('aria-expanded','false');pinned=false;hide();};
@@ -120,12 +146,13 @@
     resize.observe(bar);
     resize.observe(document.documentElement);
     window.addEventListener('resize',()=>place());
+    document.addEventListener('visibilitychange',scheduleReceiptHide);
     root.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();clear();closeMenu();root.dispatchEvent(new CustomEvent('tools-close'));collapse(true);}});
     place();
   }
   function scheduleCollapse(){clearTimeout(idleTimer);if(compact||dragging||suspended)return;idleTimer=setTimeout(()=>{const focused=root.activeElement,keyboardFocus=focused&&focused!==tab&&focused.matches(':focus-visible');if(!pointerInside&&menu.hidden&&!keyboardFocus&&!externalOpen())collapse(false);else scheduleCollapse();},4000);}
   function externalOpen(){const overlay=document.querySelector('[data-znote-overlay]');return !!overlay?.shadowRoot?.querySelector('.panel:not(.hidden):not([hidden]),.preview:not(.hidden):not([hidden])');}
-  function expand(){compact=false;bar.dataset.compact='false';tab.setAttribute('aria-expanded','true');place();scheduleCollapse();}
+  function expand(){compact=false;bar.dataset.compact='false';tab.setAttribute('aria-expanded','true');if(lastDownload&&!lastDownload.dismissed)openReceipt();place();scheduleCollapse();}
   function collapse(focus){clearTimeout(idleTimer);clearTimeout(hoverTimer);hoverSuppressed=pointerInside;if(!host)return;const b=host.getBoundingClientRect();edge=edge||(b.left+b.width/2<viewport().width/2?'left':'right');position={x:b.left,y:position?.y??b.top,edge};closeMenu?.();root.dispatchEvent(new CustomEvent('tools-close'));compact=true;bar.dataset.compact='true';bar.dataset.edge=edge;tab.setAttribute('aria-expanded','false');place();persistPosition();if(focus)tab.focus();}
   function emitLayout(){const b=host.getBoundingClientRect();for(const fn of layout)fn(b.height,b);}
   function place(next){
@@ -138,41 +165,71 @@
     const x=dragging?.moved?Math.max(0,Math.min(position.x,width-b.width)):edge==='left'?(compact?0:8):edge==='right'?width-b.width-(compact?0:8):Math.max(8,Math.min(position.x,width-b.width-8)),y=Math.max(8,Math.min(position.y,height-b.height-8));
     host.style.setProperty('right','auto','important');host.style.setProperty('bottom','auto','important');host.style.setProperty('left',x+'px','important');host.style.setProperty('top',y+'px','important');
     bar.style.setProperty('--viewport-width',width+'px');
+    receiptCard.style.maxWidth=Math.max(0,width-32)+'px';
     if(compact&&feedback.dataset.result==='true')feedback.style.setProperty('--result-offset',Math.max(0,8-y-b.height+feedback.offsetHeight)+'px');
     emitLayout();
   }
   function persistPosition(){const b=host.getBoundingClientRect();position={x:b.left,y:b.top,edge};request('page-tools-position',{position}).catch(e=>notice(e.message,{error:true,key:'tools'}));}
   function notice(message,{error=false,key='post',busy=false,download=false}={}){
     mount();
+    if(download){
+      const receipt={id:crypto.randomUUID(),status:error?'failed':'complete',message,updated:Date.now()};
+      showReceipt(receipt);
+      request('page-tools-receipt',{receipt}).catch(()=>{});
+      return;
+    }
     if(busy&&dismissed.has(key))return;
     if(!busy)dismissed.delete(key);
     clearTimeout(timer);
     owner=key;
-    if(download){
-      bar.dataset.downloadResult=error?'error':'done';
-      tab.querySelector('.download-result').textContent=error?'下载失败':'下载完成';
-    }else delete bar.dataset.downloadResult;
     text.textContent=message;
     feedback.dataset.error=String(error);
     feedback.dataset.result=String(!busy);
     feedback.hidden=false;
     progress.hidden=!busy;
     tab.dataset.state=busy?'busy':error?'error':'done';
-    tab.title='ZNote · '+message;
-    tab.setAttribute('aria-label','展开 ZNote 采集工具：'+message);
+    updateTabLabel(message);
     root.querySelector('.dock-announcement').textContent=message;
     if(!busy)timer=setTimeout(()=>{
       feedback.dataset.result='false';
-      if(!compact&&!download)clear(key);
+      if(!compact)clear(key);
     },error?20000:8000);
     place();
   }
-  function clear(key) { if(!feedback || (key && key!==owner))return;clearTimeout(timer);feedback.hidden=true;owner=null;delete bar.dataset.downloadResult;delete tab.dataset.state;tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';tab.setAttribute('aria-label','展开 ZNote 采集工具');root.querySelector('.dock-announcement').textContent='';place(); }
+  function updateTabLabel(message=''){
+    const label=bar.dataset.downloadResult?receiptTitle.textContent:message;
+    tab.title='ZNote · '+(label||'鼠标掠过或点击展开，拖动调整位置');
+    tab.setAttribute('aria-label','展开 ZNote 采集工具'+(label?'：'+label:''));
+  }
+  function clear(key) { if(!feedback || (key && key!==owner))return;clearTimeout(timer);feedback.hidden=true;owner=null;delete tab.dataset.state;updateTabLabel();root.querySelector('.dock-announcement').textContent='';place(); }
+  function scheduleReceiptHide(){
+    clearTimeout(receiptTimer);
+    if(receiptOpen&&!document.hidden)receiptTimer=setTimeout(()=>{receiptOpen=false;refresh();},12000);
+  }
+  function openReceipt(){receiptOpen=true;refresh();scheduleReceiptHide();}
+  function showReceipt(receipt){
+    if(!receipt||lastDownload?.id===receipt.id||lastDownload?.updated>receipt.updated)return;
+    lastDownload=receipt;
+    const label={complete:'下载完成',failed:'下载失败',stopped:'下载已停止'}[receipt.status];
+    receiptCard.dataset.status=receipt.status;
+    receiptCard.querySelector('.receipt-icon').textContent=receipt.status==='complete'?'✓':'!';
+    receiptTitle.textContent=label;
+    receiptDetail.textContent=receipt.message===label?'文件已保存到浏览器的下载目录。':receipt.message;
+    bar.dataset.downloadResult=receipt.status==='complete'?'done':'error';
+    tab.querySelector('.download-result').textContent=label;
+    updateTabLabel();
+    openReceipt();place();
+  }
+  function dismissReceipt(){
+    if(!lastDownload)return;
+    lastDownload={...lastDownload,dismissed:true};
+    receiptOpen=false;delete bar.dataset.downloadResult;
+    scheduleReceiptHide();refresh();place();
+    updateTabLabel(owner?text.textContent:'');
+    request('page-tools-receipt',{dismiss:lastDownload.id}).catch(()=>{});
+  }
   function reportDownload(job){
-    if(lastDownload&&(lastDownload.id===job.id||lastDownload.updated>job.updated))return;
-    lastDownload=job;
-    const error=job.status==='failed';
-    notice(error?`下载失败 · ${job.message}`:job.message,{error,key:'download',download:true});
+    showReceipt({...job,status:job.status==='completed'?'complete':job.status});
   }
   async function track(job,kind='captures'){
     if(['download','media'].includes(job?.kind))kind=job.kind;
@@ -182,7 +239,7 @@
       await new Promise(resolve=>setTimeout(resolve,1000));job=(await request('page-tools-status',{id:job.id,kind})).job;
       if(!job?.status)throw Error('无法读取任务状态，可到知识库采集记录查看');
     }
-    if(kind==='download'&&['completed','failed'].includes(job?.status)){reportDownload(job);return job;}
+    if(kind==='download'&&['completed','failed'].includes(job?.status)){clear('work');reportDownload(job);return job;}
     if(job?.status!=='completed')throw Error(job?.message||'未返回有效采集任务，请重试');notice(job.message||'已保存到知识库',{key:'work'});return job;
   }
   globalThis.ZNotePageTools = {
@@ -197,7 +254,7 @@
     onLayout(fn){mount();layout.add(fn);emitLayout();},
   };
   let work;
-  async function refreshSettings(){try{const {value}=await request('media-settings',{znotePage:!!document.querySelector('meta[name="znote-app"]')});allowed=!value.blocked&&value.dock!==false;saveAction=value.saveAction==='download'?'download':'save';mount();refreshMode();refresh();}catch{allowed=false;if(bar)refresh();}}
+  async function refreshSettings(){try{const {value}=await request('media-settings',{znotePage:!!document.querySelector('meta[name="znote-app"]')});siteAllowed=!value.blocked;allowed=siteAllowed&&value.dock!==false;saveAction=value.saveAction==='download'?'download':'save';mount();refreshMode();refresh();}catch{siteAllowed=allowed=false;if(bar)refresh();}}
   function refreshMode(){
     const download=saveAction==='download';
     menu.querySelector('select').hidden=download;
@@ -225,9 +282,11 @@
   chrome.runtime.onMessage.addListener(message=>{
     if(message.type==='media-settings-changed')refreshSettings();
     if(message.type==='media-page-changed'){updateWork();if(!work?.disabled)clear('work');}
+    if(message.type==='page-tools-download-receipt')showReceipt(message.receipt);
     const task=message.type==='media-task-update'&&message.task;
-    if(task?.action==='download'&&['complete','failed'].includes(task.status))reportDownload(task);
+    if(task?.action==='download'&&task.origin===location.origin&&['complete','failed'].includes(task.status))reportDownload(task);
   });
   mount();request('page-tools-position').then(result=>{if(result.position)place(result.position);}).catch(()=>{});updateWork();refreshSettings();
+  request('page-tools-receipt').then(result=>showReceipt(result.receipt)).catch(()=>{});
   new MutationObserver(()=>{if(host&&!host.isConnected)mount();}).observe(document.documentElement,{childList:true});
 })();

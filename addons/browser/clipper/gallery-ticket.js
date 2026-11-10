@@ -36,7 +36,7 @@ export async function openGallery(group, sender, action = 'download', inline = f
   return {message:'已打开作品批量下载'};
 }
 
-export async function inlineGalleryTicket(sender){
+export async function inlineGalleryTicket(sender,{consume=true}={}){
   const url=new URL(sender.url),id=url.searchParams.get('id');
   if(url.origin!==new URL(chrome.runtime.getURL('batch.html')).origin||url.pathname!=='/batch.html'||!id||!sender.tab)throw Error('请从原网页打开批量入库');
   return navigator.locks.request('gallery-start:'+id,async()=>{
@@ -49,7 +49,7 @@ export async function inlineGalleryTicket(sender){
   // Consume the user-created start intent once, before the frame does network I/O.
   // Reopening/reloading failed or stopped tasks never starts another upload.
   const startNow=group.autoStart===true;
-  if(startNow){group.autoStart=false;await chrome.storage.session.set({['gallery-'+id]:group});}
+  if(startNow&&consume){group.autoStart=false;await chrome.storage.session.set({['gallery-'+id]:group});}
   return {id,group,startNow};
   });
 }

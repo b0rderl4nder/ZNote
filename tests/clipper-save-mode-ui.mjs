@@ -65,7 +65,8 @@ try{
   for(const d of downloads){const data=await readFile(d.filename);assert.deepEqual(data,d.filename.endsWith('.mp4')?video:png);}
   assert.equal(runtime.db.prepare('SELECT count(*) n FROM items').get().n,beforeItems);assert.equal(runtime.captures.list().length,beforeJobs,'download creates no capture record');
   await page.screenshot({path:join(dir,`completed-${touch?'touch':'desktop'}.png`)});
-  await tools.getByRole('status').waitFor({state:'hidden',timeout:12000});
+  const receipt=tools.locator('.download-receipt');
+  await receipt.waitFor({state:'hidden',timeout:16000});
   const resultLabel=tools.locator('.download-result');
   await resultLabel.filter({hasText:'下载完成'}).waitFor();
   const completedBounds=await edgeBounds();
@@ -73,14 +74,17 @@ try{
   await page.screenshot({path:join(dir,`completed-collapsed-${touch?'touch':'desktop'}.png`)});
   await click(compactTab);
   await tools.getByRole('status').filter({hasText:'3 项下载完成'}).waitFor();
-  await click(tools.getByRole('button',{name:'关闭采集提示'}));
+  await click(receipt.getByRole('button',{name:'关闭下载提示'}));
   assert.equal(await tools.locator('.tools').getAttribute('data-download-result'),null);
   await tools.getByRole('button',{name:'采集当前作品',exact:true}).waitFor();
   await page.locator('#cover').hover();await preview.waitFor({state:'visible'});await preview.getByRole('button',{name:'Z 保存知识库',exact:true}).waitFor();assert.equal(await preview.getByRole('button',{name:'S 下载',exact:true}).isHidden(),true);await page.keyboard.press('Escape');
   // Screenshot download also avoids all library endpoints and survives closing menu.
-  await worker.evaluate(()=>chrome.storage.local.set({saveAction:'download',token:''}));await tools.getByRole('button',{name:'下载当前作品',exact:true}).waitFor();await click(more);await click(tools.getByRole('button',{name:'可见页面截图',exact:true}));await tools.getByRole('status').filter({hasText:'下载完成'}).waitFor();
+  await worker.evaluate(()=>chrome.storage.local.set({saveAction:'download',token:''}));await tools.getByRole('button',{name:'下载当前作品',exact:true}).waitFor();
+  if(await more.getAttribute('aria-expanded')!=='true')await click(more);
+  await tools.locator('.menu:not([hidden])').waitFor();
+  await click(tools.getByRole('button',{name:'可见页面截图',exact:true}));await tools.getByRole('status').filter({hasText:'下载完成'}).waitFor();
   assert.equal(runtime.db.prepare('SELECT count(*) n FROM items').get().n,beforeItems);assert.equal(runtime.captures.list().length,beforeJobs);
-  await click(tools.getByRole('button',{name:'关闭采集提示'}));await click(tools.getByRole('button',{name:'下载当前作品',exact:true}));await tools.getByRole('status').filter({hasText:'令牌'}).waitFor();await tools.locator('[data-tool="work"]:not([disabled])').waitFor();
+  await click(receipt.getByRole('button',{name:'关闭下载提示'}));await click(tools.getByRole('button',{name:'下载当前作品',exact:true}));await tools.getByRole('status').filter({hasText:'令牌'}).waitFor();await tools.locator('[data-tool="work"]:not([disabled])').waitFor();
   await worker.evaluate(token=>chrome.storage.local.set({token}),token.token);await click(more);await click(tools.getByRole('button',{name:'框选截图',exact:true}));await page.locator('#znote-region-capture').waitFor();await page.keyboard.press('Escape');assert.equal(await tools.locator('.tools').isVisible(),true);
   slow=true;fail=true;
   await click(tools.getByRole('button',{name:'下载当前作品',exact:true}));
@@ -99,6 +103,13 @@ try{
   await tools.getByRole('status').filter({hasText:'3 项下载完成'}).waitFor({timeout:30000});
   const retried=await worker.evaluate(()=>chrome.downloads.search({state:'complete'}));
   assert.equal(retried.length,beforeDownloads+7,'retry adds three real files after three originals and one screenshot');
+  await page.reload();
+  await receipt.filter({hasText:'3 项下载完成'}).waitFor();
+  assert.equal(await tools.locator('.tools').getAttribute('data-compact'),'true');
+  await click(receipt.getByRole('button',{name:'关闭下载提示'}));
+  await page.reload();
+  await compactTab.waitFor();
+  assert.equal(await tools.locator('.tools').getAttribute('data-download-result'),null,'acknowledged receipt stays dismissed after reload');
   await context.close();context=null;
  }
  console.log('PASS desktop/touch: scrollbars leave dock fully visible, real files and screenshot downloaded, completion stays after banner fades, details dismiss, resource failure and successful retry; '+dir);
