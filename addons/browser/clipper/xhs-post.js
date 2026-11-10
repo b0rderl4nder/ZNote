@@ -105,6 +105,12 @@
         const result = await chrome.runtime.sendMessage({ type: 'xhs-post-capture', url: sourceUrl.href, pageHtml });
         if (!result?.ok) throw new Error(result?.error || '提交失败');
         let job = result.job;
+        if(job.kind==='download'&&globalThis.ZNotePageTools){
+          job=await globalThis.ZNotePageTools.trackDownload(job);
+          label(button,job.status==='completed'?'已下载 ✓':'重试下载');
+          button.title=job.message;
+          return;
+        }
         for (let i = 0; i < 150 && ['queued', 'running'].includes(job.status); i++) {
           globalThis.ZNotePageTools?.progress(job.message||'等待服务器采集',{key:'xhs',elapsed:Math.floor((Date.now()-started)/1000)});
           await new Promise(resolve => setTimeout(resolve, 2000));

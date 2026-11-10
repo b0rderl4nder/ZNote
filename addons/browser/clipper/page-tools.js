@@ -3,9 +3,14 @@
   if (window !== top || !/^https?:$/.test(location.protocol) || globalThis.ZNotePageTools) return;
   let host, root, bar, actions, feedback, text, close, timer, owner, menu, more, progress, position, closeMenu, suspended=false, allowed=false, saveAction='save';
   let tab, compact=true, edge='right', idleTimer, hoverTimer, dragging, suppressTabClick=false, pointerInside=false, hoverSuppressed=false;
+  let lastDownload;
   const layout=new Set();
   const dismissed=new Set();
   const refresh = () => { bar.hidden = !allowed || suspended; };
+  function viewport(){
+    const box=document.compatMode==='BackCompat'?document.body:document.documentElement;
+    return {width:box?.clientWidth||innerWidth,height:box?.clientHeight||innerHeight};
+  }
   async function request(type,extra={}) {
     for(let attempt=0;attempt<2;attempt++){
       let result;
@@ -33,19 +38,27 @@
     style.textContent+=`
       .tools[data-compact=true]>.feedback[data-result=true]:not([hidden]) {
         display:flex!important; position:absolute; bottom:0; right:calc(100% + 8px);
-        width:max-content; max-width:min(300px,calc(100vw - 60px));
+        width:max-content; max-width:min(300px,calc(var(--viewport-width) - 100% - 16px));
         border:1px solid #435063; border-radius:12px; background:#191d24;
         box-shadow:0 4px 16px #0004;
+        transform:translateY(var(--result-offset,0px));
       }
       .tools[data-edge=left][data-compact=true]>.feedback[data-result=true] {
         left:calc(100% + 8px); right:auto;
       }
+      .tools[data-compact=true][data-dragging=true]>.feedback[data-result=true] { visibility:hidden }
+      .edge-tab .download-result { display:none }
+      .tools[data-compact=true][data-download-result] { width:100px; max-width:100px; background:#212936 }
+      .tools[data-compact=true][data-download-result]>.edge-tab { display:grid; place-items:center; height:38px }
+      .tools[data-download-result] .edge-tab .download-result { display:block; font:600 12px/1 system-ui }
+      .tools[data-download-result] .edge-tab .dock-mark, .tools[data-download-result] .edge-tab .dot { display:none }
+      .tools[data-download-result=error] .edge-tab { color:#f0c4a4 }
     `;
     actions=document.createElement('div');actions.className='actions';feedback=document.createElement('div');feedback.className='feedback';feedback.hidden=true;feedback.setAttribute('role','status');
     text=document.createElement('span');close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','关闭采集提示');close.onclick=()=>{if(!progress.hidden)dismissed.add(owner);clear();};
     progress=document.createElement('progress');progress.className='progress';progress.setAttribute('aria-label','采集进度');progress.hidden=true;
     feedback.append(text,close,progress);menu=document.createElement('div');menu.className='menu';menu.hidden=true;
-    tab=document.createElement('button');tab.type='button';tab.className='edge-tab';tab.innerHTML='<span aria-hidden="true">Z</span><span class="dot" aria-hidden="true"></span>';tab.setAttribute('aria-label','展开 ZNote 采集工具');tab.setAttribute('aria-expanded','false');tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';
+    tab=document.createElement('button');tab.type='button';tab.className='edge-tab';tab.innerHTML='<span class="dock-mark" aria-hidden="true">Z</span><span class="dot" aria-hidden="true"></span><span class="download-result" aria-hidden="true"></span>';tab.setAttribute('aria-label','展开 ZNote 采集工具');tab.setAttribute('aria-expanded','false');tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';
     const announcement=document.createElement('span');announcement.className='dock-announcement';announcement.setAttribute('aria-live','polite');
     bar.append(tab,actions,menu,feedback,announcement);root.append(style,bar);document.documentElement.append(host);
     const drag=document.createElement('button');drag.type='button';drag.className='drag';drag.textContent='⠿';drag.setAttribute('aria-label','拖动采集工具栏');drag.title='拖动移动；方向键微调';actions.append(drag);
@@ -75,7 +88,7 @@
     linkToggle.onclick=()=>{linkForm.hidden=!linkForm.hidden;linkToggle.setAttribute('aria-expanded',String(!linkForm.hidden));if(!linkForm.hidden)linkForm.querySelector('textarea').focus();};
     linkForm.onsubmit=async e=>{e.preventDefault();if(!e.isTrusted)return;const input=linkForm.querySelector('textarea'),button=linkForm.querySelector('button');if(!input.value.trim()){input.focus();return;}button.disabled=true;closeMenu();try{dismissed.delete('work');globalThis.ZNotePageTools.progress('正在提交作品链接…',{key:'work'});const result=await request('page-tools-action',{action:'link',text:input.value});await track(result.job);}catch(error){notice(error.message,{error:true,key:'work'});}finally{button.disabled=false;}};
     const hint=document.createElement('button');hint.type='button';hint.className='help-button';hint.textContent='?';hint.setAttribute('aria-label','页面采集说明');hint.setAttribute('aria-expanded','false');menu.querySelector('.menu-heading').append(hint);
-    const help=menu.querySelector('.help');help.textContent='采集当前作品支持 X、小红书、B 站及能公开读取的图集和网页；需要登录的作品可用页面正文或媒体嗅探。框选截图：拖动选择，Enter 保存、Esc 取消。鼠标掠过边缘 Z 页签自动展开，也可点击展开；拖动页签或把手移动，靠边松手吸附收起；方向键微调，位置自动记住。移开鼠标后闲置四秒自动收起，菜单和视频面板使用中保持展开。采集中、完成或失败会在页签显示状态点，点击查看详情。进度显示服务器实际阶段和数量，不估算下载百分比。';
+    const help=menu.querySelector('.help');help.textContent='采集当前作品支持 X、小红书、B 站及能公开读取的图集和网页；需要登录的作品可用页面正文或媒体嗅探。框选截图：拖动选择，Enter 保存、Esc 取消。鼠标掠过边缘 Z 页签自动展开，也可点击展开；拖动页签或把手移动，靠边松手吸附收起；方向键微调，位置自动记住。移开鼠标后闲置四秒自动收起，菜单和视频面板使用中保持展开。下载完成或失败后，收起的页签会保留文字，展开可查看详情和关闭提示。进度显示服务器实际阶段和数量，不估算下载百分比。';
     let pinned=false;const show=()=>{help.hidden=false;hint.setAttribute('aria-expanded','true');const a=hint.getBoundingClientRect(),b=help.getBoundingClientRect();help.style.left=Math.max(8,Math.min(a.left,innerWidth-b.width-8))+'px';help.style.top=Math.max(8,Math.min(a.top>b.height+16?a.top-b.height-8:a.bottom+8,innerHeight-b.height-8))+'px';},hide=()=>{help.hidden=true;hint.setAttribute('aria-expanded','false');};
     hint.onclick=()=>{pinned=!pinned;pinned?show():hide();};hint.onpointerenter=e=>{if(e.pointerType==='mouse')show();};hint.onpointerleave=e=>{if(e.pointerType==='mouse'&&!pinned)hide();};hint.onfocus=show;hint.onblur=()=>{if(!pinned)hide();};
     closeMenu=()=>{menu.hidden=true;more.setAttribute('aria-expanded','false');pinned=false;hide();};
@@ -92,7 +105,7 @@
         if(previous.moved){
           suppressTabClick=handle===tab&&e.type!=='pointercancel';setTimeout(()=>suppressTabClick=false,250);
           if(e.type==='pointercancel'){position=previous.original;edge=position?.edge??null;place();}
-          else{const b=host.getBoundingClientRect();position={x:b.left,y:b.top};edge=null;if(compact||b.left<48||innerWidth-b.right<48)collapse(false);else{place();persistPosition();}}
+          else{const b=host.getBoundingClientRect();position={x:b.left,y:b.top};edge=null;if(compact||b.left<48||viewport().width-b.right<48)collapse(false);else{place();persistPosition();}}
         }
         scheduleCollapse();
       };
@@ -103,31 +116,42 @@
     bar.addEventListener('pointerleave',()=>{pointerInside=false;clearTimeout(hoverTimer);if(!dragging)hoverSuppressed=false;scheduleCollapse()});
     bar.addEventListener('focusin',()=>clearTimeout(idleTimer));bar.addEventListener('focusout',()=>scheduleCollapse());bar.addEventListener('click',scheduleCollapse);
     new MutationObserver(refresh).observe(actions,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden']});
-    new ResizeObserver(()=>{place();emitLayout();}).observe(bar);
-    window.addEventListener('resize',()=>{place();emitLayout();});
+    const resize=new ResizeObserver(()=>place());
+    resize.observe(bar);
+    resize.observe(document.documentElement);
+    window.addEventListener('resize',()=>place());
     root.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();clear();closeMenu();root.dispatchEvent(new CustomEvent('tools-close'));collapse(true);}});
     place();
   }
   function scheduleCollapse(){clearTimeout(idleTimer);if(compact||dragging||suspended)return;idleTimer=setTimeout(()=>{const focused=root.activeElement,keyboardFocus=focused&&focused!==tab&&focused.matches(':focus-visible');if(!pointerInside&&menu.hidden&&!keyboardFocus&&!externalOpen())collapse(false);else scheduleCollapse();},4000);}
   function externalOpen(){const overlay=document.querySelector('[data-znote-overlay]');return !!overlay?.shadowRoot?.querySelector('.panel:not(.hidden):not([hidden]),.preview:not(.hidden):not([hidden])');}
   function expand(){compact=false;bar.dataset.compact='false';tab.setAttribute('aria-expanded','true');place();scheduleCollapse();}
-  function collapse(focus){clearTimeout(idleTimer);clearTimeout(hoverTimer);hoverSuppressed=pointerInside;if(!host)return;const b=host.getBoundingClientRect();edge=edge||(b.left+b.width/2<innerWidth/2?'left':'right');position={x:b.left,y:position?.y??b.top,edge};closeMenu?.();root.dispatchEvent(new CustomEvent('tools-close'));compact=true;bar.dataset.compact='true';bar.dataset.edge=edge;tab.setAttribute('aria-expanded','false');place();persistPosition();if(focus)tab.focus();}
+  function collapse(focus){clearTimeout(idleTimer);clearTimeout(hoverTimer);hoverSuppressed=pointerInside;if(!host)return;const b=host.getBoundingClientRect();edge=edge||(b.left+b.width/2<viewport().width/2?'left':'right');position={x:b.left,y:position?.y??b.top,edge};closeMenu?.();root.dispatchEvent(new CustomEvent('tools-close'));compact=true;bar.dataset.compact='true';bar.dataset.edge=edge;tab.setAttribute('aria-expanded','false');place();persistPosition();if(focus)tab.focus();}
   function emitLayout(){const b=host.getBoundingClientRect();for(const fn of layout)fn(b.height,b);}
   function place(next){
-    if(next){position=next;if(!dragging)edge=next.edge??null;}if(!host)return;if(!position)position={x:innerWidth,y:innerHeight-96,edge:'right'};
+    if(next){position=next;if(!dragging)edge=next.edge??null;}if(!host)return;
+    const {width,height}=viewport();
+    if(!position)position={x:width,y:height-96,edge:'right'};
     // Temporary menu/progress growth may need more space. Preserve the chosen
     // anchor so collapsing the toolbar returns to the same place.
-    const b=bar.getBoundingClientRect();if(compact&&!dragging&&!edge)edge=position.x+b.width/2<innerWidth/2?'left':'right';bar.dataset.edge=edge||'free';
-    const x=dragging?.moved?Math.max(0,Math.min(position.x,innerWidth-b.width)):edge==='left'?(compact?0:8):edge==='right'?innerWidth-b.width-(compact?0:8):Math.max(8,Math.min(position.x,innerWidth-b.width-8)),y=Math.max(8,Math.min(position.y,innerHeight-b.height-8));
-    host.style.setProperty('right','auto','important');host.style.setProperty('bottom','auto','important');host.style.setProperty('left',x+'px','important');host.style.setProperty('top',y+'px','important');emitLayout();
+    const b=bar.getBoundingClientRect();if(compact&&!dragging&&!edge)edge=position.x+b.width/2<width/2?'left':'right';bar.dataset.edge=edge||'free';
+    const x=dragging?.moved?Math.max(0,Math.min(position.x,width-b.width)):edge==='left'?(compact?0:8):edge==='right'?width-b.width-(compact?0:8):Math.max(8,Math.min(position.x,width-b.width-8)),y=Math.max(8,Math.min(position.y,height-b.height-8));
+    host.style.setProperty('right','auto','important');host.style.setProperty('bottom','auto','important');host.style.setProperty('left',x+'px','important');host.style.setProperty('top',y+'px','important');
+    bar.style.setProperty('--viewport-width',width+'px');
+    if(compact&&feedback.dataset.result==='true')feedback.style.setProperty('--result-offset',Math.max(0,8-y-b.height+feedback.offsetHeight)+'px');
+    emitLayout();
   }
   function persistPosition(){const b=host.getBoundingClientRect();position={x:b.left,y:b.top,edge};request('page-tools-position',{position}).catch(e=>notice(e.message,{error:true,key:'tools'}));}
-  function notice(message,{error=false,key='post',busy=false}={}){
+  function notice(message,{error=false,key='post',busy=false,download=false}={}){
     mount();
     if(busy&&dismissed.has(key))return;
     if(!busy)dismissed.delete(key);
     clearTimeout(timer);
     owner=key;
+    if(download){
+      bar.dataset.downloadResult=error?'error':'done';
+      tab.querySelector('.download-result').textContent=error?'下载失败':'下载完成';
+    }else delete bar.dataset.downloadResult;
     text.textContent=message;
     feedback.dataset.error=String(error);
     feedback.dataset.result=String(!busy);
@@ -139,23 +163,32 @@
     root.querySelector('.dock-announcement').textContent=message;
     if(!busy)timer=setTimeout(()=>{
       feedback.dataset.result='false';
-      if(!compact)clear(key);
+      if(!compact&&!download)clear(key);
     },error?20000:8000);
+    place();
   }
-  function clear(key) { if(!feedback || (key && key!==owner))return;clearTimeout(timer);feedback.hidden=true;owner=null;delete tab.dataset.state;tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';tab.setAttribute('aria-label','展开 ZNote 采集工具');root.querySelector('.dock-announcement').textContent=''; }
+  function clear(key) { if(!feedback || (key && key!==owner))return;clearTimeout(timer);feedback.hidden=true;owner=null;delete bar.dataset.downloadResult;delete tab.dataset.state;tab.title='ZNote · 鼠标掠过或点击展开，拖动调整位置';tab.setAttribute('aria-label','展开 ZNote 采集工具');root.querySelector('.dock-announcement').textContent='';place(); }
+  function reportDownload(job){
+    if(lastDownload&&(lastDownload.id===job.id||lastDownload.updated>job.updated))return;
+    lastDownload=job;
+    const error=job.status==='failed';
+    notice(error?`下载失败 · ${job.message}`:job.message,{error,key:'download',download:true});
+  }
   async function track(job,kind='captures'){
     if(['download','media'].includes(job?.kind))kind=job.kind;
     const started=Date.now();
     while(['queued','running'].includes(job?.status)){
-      globalThis.ZNotePageTools.progress(job.message||'等待服务器处理',{key:'work',elapsed:Math.floor((Date.now()-started)/1000)});
+      if(lastDownload?.id!==job.id)globalThis.ZNotePageTools.progress(job.message||'等待服务器处理',{key:'work',elapsed:Math.floor((Date.now()-started)/1000)});
       await new Promise(resolve=>setTimeout(resolve,1000));job=(await request('page-tools-status',{id:job.id,kind})).job;
       if(!job?.status)throw Error('无法读取任务状态，可到知识库采集记录查看');
     }
+    if(kind==='download'&&['completed','failed'].includes(job?.status)){reportDownload(job);return job;}
     if(job?.status!=='completed')throw Error(job?.message||'未返回有效采集任务，请重试');notice(job.message||'已保存到知识库',{key:'work'});return job;
   }
   globalThis.ZNotePageTools = {
     register(key,node){mount();actions.querySelector(`[data-tool="${key}"]`)?.remove();node.dataset.tool=key;actions.insertBefore(node,key==='post'?actions.querySelector('.drag').nextSibling:more);refresh();return node;},
     notice,
+    trackDownload: track,
     progress(message,{key='post',elapsed=0}={}){notice(`${message}${elapsed?' · 已用 '+elapsed+' 秒':''}`,{key,busy:true});const count=message.match(/(\d+)\/(\d+)/);if(count){progress.max=Number(count[2]);progress.value=Number(count[1]);}else progress.removeAttribute('value');},
     suspend(value){mount();suspended=value;if(value)root.dispatchEvent(new CustomEvent('tools-close'));refresh();},
     clear,
@@ -182,7 +215,7 @@
       work.onclick=async e=>{
         if(!e.isTrusted||e.currentTarget.disabled)return;
         const button=e.currentTarget,mode=saveAction;button.disabled=true;button.textContent='采集中…';closeMenu();
-        try{dismissed.delete('work');globalThis.ZNotePageTools.progress('正在提交当前作品…',{key:'work'});const result=await request('page-tools-action',{action:'work'});await track(result.job);button.textContent=result.job?.kind==='download'?'已下载 ✓':'已保存 ✓';}
+        try{dismissed.delete('work');globalThis.ZNotePageTools.progress('正在提交当前作品…',{key:'work'});const result=await request('page-tools-action',{action:'work'});const job=await track(result.job);button.textContent=job.status==='failed'?'重试下载':job.kind==='download'?'已下载 ✓':'已保存 ✓';}
         catch(error){button.textContent='重试采集';notice(error.message,{error:true,key:'work'});}
         finally{button.disabled=false;if(mode!==saveAction)refreshMode();}
       };
@@ -193,9 +226,7 @@
     if(message.type==='media-settings-changed')refreshSettings();
     if(message.type==='media-page-changed'){updateWork();if(!work?.disabled)clear('work');}
     const task=message.type==='media-task-update'&&message.task;
-    if(task?.action==='download'&&['complete','failed'].includes(task.status)){
-      notice(task.status==='failed'?`下载失败 · ${task.message}`:task.message,{error:task.status==='failed',key:'download'});
-    }
+    if(task?.action==='download'&&['complete','failed'].includes(task.status))reportDownload(task);
   });
   mount();request('page-tools-position').then(result=>{if(result.position)place(result.position);}).catch(()=>{});updateWork();refreshSettings();
   new MutationObserver(()=>{if(host&&!host.isConnected)mount();}).observe(document.documentElement,{childList:true});

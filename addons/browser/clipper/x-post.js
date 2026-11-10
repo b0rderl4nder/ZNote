@@ -49,6 +49,11 @@
           const result = await request('x-post-capture',{url,...(browserPost?{browserPost}:{})});
           let job = result.job;
           if(!job?.id||!job.status)throw Error('扩展未返回采集任务，请重新加载扩展后重试');
+          if(job.kind==='download'&&globalThis.ZNotePageTools){
+            job=await globalThis.ZNotePageTools.trackDownload(job);
+            button.textContent=job.status==='completed'?'已下载 ✓':'重试下载';
+            return;
+          }
           for (let i = 0; i < 150 && ['queued', 'running'].includes(job.status); i++) {
             globalThis.ZNotePageTools?.progress(job.message||'等待服务器采集',{elapsed:Math.floor((Date.now()-started)/1000)});
             await new Promise(resolve => setTimeout(resolve, 2000));
