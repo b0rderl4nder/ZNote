@@ -103,7 +103,7 @@ export async function finishCaptureRegion(tab,selected) {
   await chrome.tabs.sendMessage(tab.id,{type:'region-capture-result',message:'正在保存截图…'},{frameId:0}).catch(()=>{});
   try {
     const item=await record(()=>capturePage(current,selected.region));
-    await chrome.tabs.sendMessage(tab.id,{type:'region-capture-result',message:item.kind==='download'?'截图已加入后台下载':'区域截图已保存到知识库'},{frameId:0}).catch(()=>{});
+    if(item.kind!=='download')await chrome.tabs.sendMessage(tab.id,{type:'region-capture-result',message:'区域截图已保存到知识库'},{frameId:0}).catch(()=>{});
     return item;
   } catch(e) {
     await chrome.tabs.sendMessage(tab.id,{type:'region-capture-result',message:e.message||'截图保存失败，可重新框选重试'},{frameId:0}).catch(()=>{});throw e;
