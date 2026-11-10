@@ -34,7 +34,7 @@ export function OrganizeDialog({ items, collections, onClose, onDone, copy = fal
       {copy ? <div className="organize-heading">目标知识库 <HelpHint label="复用内容">原图只保存一份。新条目拥有独立标题、说明、标签与收藏状态。</HelpHint></div> :
         <label className="organize-toggle"><input type="checkbox" disabled={busy} checked={move} onChange={e => setMove(e.target.checked)} /><span>移动到知识库</span></label>}
       <select aria-label="整理目标知识库" disabled={!move || busy} value={collection} onChange={e => setCollection(e.target.value)}>
-        <option value="">未分类</option>{collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <option value="">未分类</option>{collections.map(c => <option key={c.id} value={c.id}>{c.display_name || c.name}</option>)}
       </select>
       </div>
       {!copy && <label className="organize-section">收藏状态<select aria-label="批量收藏状态" value={favorite} onChange={e => setFavorite(e.target.value)} disabled={busy}>

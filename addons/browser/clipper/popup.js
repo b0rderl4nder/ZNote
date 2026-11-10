@@ -40,7 +40,7 @@ async function connect() {
   $('connection-state').textContent = '正在读取知识库…';
   try {
     const collections = await api('/api/collections', {signal:AbortSignal.timeout(8000)}, config);
-    $('destination').replaceChildren(new Option('未分类',''), ...collections.map(c => new Option(c.name,c.id)));
+    $('destination').replaceChildren(new Option('未分类',''), ...collections.map(c => new Option(c.display_name || c.name, c.id)));
     if (config.collection_id && !collections.some(c => c.id === config.collection_id)) {const missing=new Option('原知识库已删除，请重新选择',config.collection_id);missing.disabled=true;$('destination').append(missing);$('destination').value=config.collection_id;throw Error('原目标知识库已删除，请重新选择');}
     $('destination').value = config.collection_id; $('connection-state').textContent = config.remoteToken?((await connection(config)).remote?'Cloudflare 备用 · 链接采集':'本机直连 · 优先使用'):'';
   } catch (error) { $('connection-state').textContent = error.message; $('connection-retry').hidden = false; }

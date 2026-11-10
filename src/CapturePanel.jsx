@@ -15,7 +15,7 @@ export function CapturePanel({collections,currentCollection,onComplete,onOpen}){
     <div className="inline-heading"><h3>分享链接入库</h3><HelpHint label="手机与网页采集">粘贴 App 分享文字或网页链接，由服务器保存正文、配图或视频。配图会下载到本地并成组，作者作为标签保存。平台要求登录或验证时可能无法取得完整内容。任务保留在服务器；重启中断的任务可手动重试。移除记录仅清理任务，不会删除已入库内容。</HelpHint></div>
     <form className="import-form" onSubmit={submit}>
       <label>分享内容<textarea aria-label="分享内容" rows={3} maxLength={16000} value={text} onChange={e=>setText(e.target.value)} placeholder="粘贴小红书、抖音分享文字，或浏览器网页链接" required/></label>
-      <label>目标知识库<select value={collection} onChange={e=>setCollection(e.target.value)}><option value="">未分类</option>{!valid&&<option value={collection}>原知识库已不存在，请重新选择</option>}{collections.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label>目标知识库<select value={collection} onChange={e=>setCollection(e.target.value)}><option value="">未分类</option>{!valid&&<option value={collection}>原知识库已不存在，请重新选择</option>}{collections.map(c=><option key={c.id} value={c.id}>{c.display_name || c.name}</option>)}</select></label>
       <button className="primary" disabled={busy||!valid||!text.trim()}>{busy?'正在提交…':'采集到知识库'}</button>
     </form>
     {error&&<p className="error" role="alert">{error}</p>}

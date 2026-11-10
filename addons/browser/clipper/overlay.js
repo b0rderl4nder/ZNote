@@ -258,7 +258,7 @@
       const config = await send({ type: "media-connect" });
       selector.replaceChildren(
         new Option("未分类", ""),
-        ...config.collections.map((c) => new Option(c.name, c.id)),
+        ...config.collections.map((c) => new Option(c.display_name || c.name, c.id)),
       );
       selector.value = config.collection_id;
       tagInput.value = config.tags;
@@ -610,7 +610,7 @@
       destinationButton.disabled=true;
       try{
         const config=await send({type:'media-connect'});
-        previewDestination.replaceChildren(new Option('未分类',''),...config.collections.map(c=>new Option(c.name,c.id)));
+        previewDestination.replaceChildren(new Option('未分类',''),...config.collections.map(c=>new Option(c.display_name || c.name, c.id)));
         previewDestination.value=config.collection_id;previewDestination.hidden=false;previewDestination.focus();placePreview();
       }catch(e){previewLabel.textContent=e.message;}finally{destinationButton.disabled=false;}
     });

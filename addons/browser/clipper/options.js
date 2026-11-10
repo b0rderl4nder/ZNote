@@ -47,7 +47,7 @@ async function load(config = current) {
   const me = await requestAt(config,'/api/me');
   if (me.scope !== 'write') throw new Error('采集需要 write 写入令牌，请使用 ZNote 中的写入令牌');
   const collections = await requestAt(config,'/api/collections');
-  $('collection').replaceChildren(new Option('未分类', ''), ...collections.map(c => new Option(c.name, c.id)));
+  $('collection').replaceChildren(new Option('未分类', ''), ...collections.map(c => new Option(c.display_name || c.name, c.id)));
   if (collections.some(c => c.id === selected)) $('collection').value = selected;
 }
 async function saveConnection(message) {

@@ -38,7 +38,7 @@ export function RecentDownloads({collection,collections,onClose,onOpen}) {
   }
   return <><Dialog title="最近下载" className="recent-downloads-dialog" onClose={onClose}>
     <div className="downloads-filters">
-      <select aria-label="下载知识库" value={scope} onChange={choose(setScope)} disabled={busy}><option value="all">全部知识库</option><option value="unfiled">未分类</option>{collections.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+      <select aria-label="下载知识库" value={scope} onChange={choose(setScope)} disabled={busy}><option value="all">全部知识库</option><option value="unfiled">未分类</option>{collections.map(c=><option key={c.id} value={c.id}>{c.display_name || c.name}</option>)}</select>
       <select aria-label="下载时间范围" value={days} onChange={choose(setDays)} disabled={busy}><option value="1">最近 24 小时</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select>
       <button aria-label="刷新下载记录" disabled={busy} onClick={()=>store.refreshRemote()}><RefreshCw size={16}/></button>
       <HelpHint label="最近下载">按最近提交、重试或结束时间排列。显示当前服务器保留的分享链接采集、图组和视频下载记录，不包含仅下载到浏览器本地的文件。分享采集记录保存在服务器，视频导入记录在服务重启后清空；单条可直接移除已结束记录；批量移除仅作用于当前筛选范围（包含其他分页），需先确认。进行中任务不会移除；移除记录不删除已入库内容。重试沿用原任务与目标库，跳过已保存的成员；配乐失败只重试配乐。批量重试作用于当前筛选的全部失败记录，队列满时保留未提交项；关闭窗口停止后续提交，已提交任务继续执行。平台登录或验证限制仍可能导致重试失败。</HelpHint>

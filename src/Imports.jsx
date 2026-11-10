@@ -25,7 +25,7 @@ export function ImportsDialog({ collections, currentCollection, onClose, onCompl
       <div className="inline-heading"><h3>保存网页视频</h3><HelpHint label="网络视频采集">粘贴哔哩哔哩、抖音、小红书或 X 的单条视频链接，来源自动写进备注。单条最多 500 MB，音视频合并不重新编码。需要登录或验证的资源可能无法获取；图片可用浏览器扩展采集。</HelpHint></div>
       <form onSubmit={submit} className="import-form">
         <label>视频页面链接<input required type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.bilibili.com/video/…" /></label>
-        <label>存入知识库<select value={collection} onChange={e => setCollection(e.target.value)}><option value="">未分类</option>{collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label>存入知识库<select value={collection} onChange={e => setCollection(e.target.value)}><option value="">未分类</option>{collections.map(c => <option key={c.id} value={c.id}>{c.display_name || c.name}</option>)}</select></label>
         <label>标签（用逗号分隔）<input value={tags} onChange={e => setTags(e.target.value)} placeholder="参考，灵感" /></label>
         <button className="primary" disabled={busy || !url.trim()}>{busy ? '正在提交…' : '开始采集'}</button>
       </form>
