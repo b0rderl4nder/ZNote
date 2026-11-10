@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { ensureCollectionEmojis } from './collection-emojis.js';
 
 export function openDatabase(dir) {
   const db = openLegacyDatabase(dir);
@@ -72,6 +73,7 @@ export function openDatabase(dir) {
         PRAGMA user_version=15; COMMIT`);
     } catch(e) { db.exec('ROLLBACK');db.close();throw e; }
   }
+  ensureCollectionEmojis(db);
   return db;
 }
 function openLegacyDatabase(dir) {

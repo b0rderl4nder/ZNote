@@ -32,7 +32,7 @@ export function libraryBatch(group, persist, changed, downloading) {
       if (me.scope !== 'write') throw Error('批量入库需要 write 写入令牌');
       const collections = await api('/api/collections', {}, connection);
       const selected = destination?.collection_id ?? connection.collection_id;
-      $('collection').replaceChildren(new Option('未分类', ''), ...collections.map(c => new Option(c.name, c.id)));
+      $('collection').replaceChildren(new Option('未分类', ''), ...collections.map(c => new Option(c.display_name || c.name, c.id)));
       if (selected && !collections.some(c => c.id === selected)) {
         if(group.saveTarget)throw Error('目标知识库已不存在，请从原网页新建任务并选择其他知识库');
         $('collection').value='';needsDestination=true;

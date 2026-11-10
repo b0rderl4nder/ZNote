@@ -109,6 +109,8 @@ export const spec = {
         properties: {
           id: str,
           name: str,
+          emoji: { ...str, maxLength: 64, example: '🎨', description: '一个 Emoji，空字符串隐藏图标' },
+          display_name: { ...str, readOnly: true, example: '🎨 插画' },
           color: { ...str, example: "#287464" },
         },
       },

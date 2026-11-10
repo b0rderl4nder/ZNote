@@ -273,7 +273,7 @@ export function UploadDialog({
             <option value="">未分类</option>
             {collections.map((c) => (
               <option value={c.id} key={c.id}>
-                {c.name}
+                {c.display_name || c.name}
               </option>
             ))}
           </select>
@@ -431,7 +431,7 @@ export function ExportDialog({ collections, currentCollection, onClose }) {
             <option value="unfiled">未分类</option>
             {collections.map((c) => (
               <option value={c.id} key={c.id}>
-                {c.name}
+                {c.display_name || c.name}
               </option>
             ))}
           </select>
@@ -591,7 +591,7 @@ export function PreferencesSections({
           <option value="unfiled">未分类</option>
           {collections.map((c) => (
             <option value={c.id} key={c.id}>
-              {c.name}
+              {c.display_name || c.name}
             </option>
           ))}
         </select>

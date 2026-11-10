@@ -304,6 +304,12 @@
   font-size: 11px;
   gap: 8px;
 }
+.library-card > .library-emoji { font-size: 28px; line-height: 32px; }
+.collection-emoji-field { display: flex; align-items: flex-end; gap: 8px; }
+.collection-emoji-field label { flex: 1; min-width: 0; }
+.collection-emoji-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.collection-emoji-choices button { min-width: 40px; min-height: 40px; padding: 4px 8px; }
+.collection-emoji-choices button[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: -2px; }
 .library-card.new-library {
   border-style: dashed;
   align-items: center;

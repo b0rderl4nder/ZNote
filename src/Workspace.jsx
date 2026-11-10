@@ -966,7 +966,7 @@ export default function Workspace({
   const title =
     collection === "unfiled"
       ? "未分类"
-      : activeCollection?.name || labels[view];
+      : activeCollection?.display_name || activeCollection?.name || labels[view];
   const newNote = () => {
     closeDetail();
     setSelected({
@@ -1064,7 +1064,7 @@ export default function Workspace({
                 onClick={() => chooseCollection(c.id)}
               >
                 <span className="folder-icon" style={{ color: c.color }}>
-                  <BookOpen size={17} />
+                  {c.emoji ? <span aria-hidden="true">{c.emoji}</span> : <BookOpen size={17} />}
                 </span>
                 <b>{c.name}</b>
                 <span>{c.card_count ?? c.count}</span>
@@ -1215,7 +1215,7 @@ export default function Workspace({
                     key={c.id}
                     onClick={() => chooseCollection(c.id)}
                   >
-                    <BookOpen size={32} style={{ color: c.color }} />
+                    {c.emoji ? <span className="library-emoji" aria-hidden="true">{c.emoji}</span> : <BookOpen size={32} style={{ color: c.color }} />}
                     <h2>{c.name}</h2>
                     <p>{c.card_count ?? c.count} 张卡片</p>
                     <span>

@@ -1,4 +1,6 @@
 import {MAX_ITEM_TAGS,MAX_TAG_LENGTH} from '../shared/tag-limits.js';
+import { collectionLabel, isCollectionEmoji } from '../shared/collection-labels.js';
+import { collectionEmojiKey, defaultCollectionEmoji } from './collection-emojis.js';
 import {typeOrderSchema} from './saved-views.js';
 import { MAX_IMAGE_BYTES, MAX_PSD_BYTES, compressLargeImage } from './image-limits.js';
 import {localMediaReferences} from '../shared/local-media.js';
@@ -104,6 +106,7 @@ const patchInput = z.object({
 });
 const collectionInput = z.object({
   name: z.string().trim().min(1).max(80),
+  emoji: z.string().trim().max(64).refine(value => value === '' || isCollectionEmoji(value), '请选择一个 Emoji').optional(),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/)
@@ -442,37 +445,44 @@ export function createApp({
         .get(...scope.args).n,
     });
   });
-  app.get("/api/collections", (req, res) =>
-    res.json(
-      db
-        .prepare(
-          `SELECT c.*, (SELECT count(*) FROM items i WHERE i.collection_id=c.id AND deleted_at IS NULL) count,
+  const collectionView = row => ({...row, display_name:collectionLabel(row.name,row.emoji)});
+  const setCollectionEmoji = (id, emoji) => db.prepare(`INSERT INTO settings(key,value) VALUES(?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(collectionEmojiKey(id),emoji);
+
+  app.get("/api/collections", (req, res) => {
+    const rows = db.prepare(
+          `SELECT c.*, COALESCE(s.value,'') AS emoji,
+            (SELECT count(*) FROM items i WHERE i.collection_id=c.id AND deleted_at IS NULL) count,
             (SELECT count(DISTINCT ${cardIdentity}) FROM items WHERE collection_id=c.id AND deleted_at IS NULL) card_count
-            FROM collections c ORDER BY created_at`,
-        )
-        .all(),
-    ),
-  );
+            FROM collections c LEFT JOIN settings s ON s.key='collection_emoji:'||c.id ORDER BY c.created_at`,
+        ).all().map(collectionView);
+    // The installed Android capture panel displays the catalogue's name field
+    // directly. Its native HTTP client is separate from the editable web UI.
+    const nativeCatalogue = /^Dalvik\//.test(req.get('user-agent') || '');
+    res.json(nativeCatalogue ? rows.map(row => ({...row,name:row.display_name})) : rows);
+  });
   app.post("/api/collections", (req, res) => {
     const c = collectionInput.parse(req.body);
     const id = randomUUID();
-    db.prepare("INSERT INTO collections VALUES(?,?,?,?)").run(
-      id,
-      c.name,
-      c.color,
-      now(),
-    );
-    res
-      .status(201)
-      .json(db.prepare("SELECT * FROM collections WHERE id=?").get(id));
+    const row = transaction(() => {
+      const used = new Set(db.prepare("SELECT value FROM settings WHERE key GLOB 'collection_emoji:*'").all().map(row=>row.value).filter(Boolean));
+      const emoji = c.emoji ?? defaultCollectionEmoji(c.name,used);
+      db.prepare("INSERT INTO collections(id,name,color,created_at) VALUES(?,?,?,?)").run(id,c.name,c.color,now());
+      setCollectionEmoji(id,emoji);
+      return collectionView({...db.prepare("SELECT * FROM collections WHERE id=?").get(id),emoji});
+    });
+    res.status(201).json(row);
   });
   app.patch("/api/collections/:id", (req, res) => {
     const c = collectionInput.parse(req.body);
-    const result = db
-      .prepare("UPDATE collections SET name=?,color=? WHERE id=?")
-      .run(c.name, c.color, req.params.id);
-    if (!result.changes) throw fail(404, "知识库不存在");
-    res.json({ id: req.params.id, ...c });
+    const id = req.params.id;
+    const row = transaction(() => {
+      const result = db.prepare("UPDATE collections SET name=?,color=? WHERE id=?").run(c.name,c.color,id);
+      if (!result.changes) throw fail(404, "知识库不存在");
+      if (c.emoji !== undefined) setCollectionEmoji(id,c.emoji);
+      return collectionView({id,name:c.name,color:c.color,emoji:setting(collectionEmojiKey(id)) || ''});
+    });
+    res.json(row);
   });
   app.delete("/api/collections/:id", (req, res) => {
     transaction(() => {
@@ -480,6 +490,7 @@ export function createApp({
         .prepare("DELETE FROM collections WHERE id=?")
         .run(req.params.id);
       if (!result.changes) throw fail(404, "知识库不存在");
+      db.prepare("DELETE FROM settings WHERE key=?").run(collectionEmojiKey(req.params.id));
       if (setting("default_collection_id") === req.params.id)
         db.prepare(
           "DELETE FROM settings WHERE key='default_collection_id'",

@@ -25,7 +25,7 @@ try {
   }
   $("collection").replaceChildren(
     new Option("未分类", ""),
-    ...collections.map((c) => new Option(c.name, c.id)),
+    ...collections.map((c) => new Option(c.display_name || c.name, c.id)),
   );
   $("collection").value = config.collection_id;
   $("tags").value = config.tags;

@@ -66,6 +66,7 @@ import './video.css';
 import { AppearanceProvider } from './appearance.jsx';
 import { api, send, bytes, authenticated } from "./api.js";
 import { HelpHint } from './HelpHint.jsx';
+import { COLLECTION_EMOJIS, isCollectionEmoji } from '../shared/collection-labels.js';
 import './polish.css';
 import './preview.css';
 import './group-order.css';
@@ -365,7 +366,10 @@ function App() {
 function CollectionDialog({ value, onClose, onSave }) {
   const [name, setName] = useState(value.name || "");
   const [color, setColor] = useState(value.color || "#287464");
+  const [emoji, setEmoji] = useState(value.emoji);
+  const [emojiError, setEmojiError] = useState('');
   const [busy, setBusy] = useState(false);
+  const chooseEmoji = icon => { setEmoji(icon); setEmojiError(''); };
   return (
     <Dialog
       title={value.id ? "管理知识库" : "创建知识库"}
@@ -375,9 +379,14 @@ function CollectionDialog({ value, onClose, onSave }) {
       <form
         onSubmit={async (e) => {
           e.preventDefault();
+          const icon = emoji?.trim();
+          if (icon && !isCollectionEmoji(icon)) {
+            setEmojiError('请输入一个 Emoji');
+            return;
+          }
           setBusy(true);
-          await onSave({ name, color });
-          setBusy(false);
+          try { await onSave({ name, color, emoji:icon }); }
+          finally { setBusy(false); }
         }}
       >
         <p>用一个主题，把相关的图片和笔记放在一起。</p>
@@ -392,6 +401,15 @@ function CollectionDialog({ value, onClose, onSave }) {
             placeholder="例如：设计灵感、学习笔记"
           />
         </label>
+        <div className="collection-emoji-field">
+          <label>知识库图标<input value={emoji ?? ''} maxLength={64} aria-invalid={!!emojiError} aria-describedby={emojiError ? 'collection-emoji-error' : undefined} placeholder={emoji === undefined ? '自动分配' : '粘贴一个 Emoji'} onChange={e=>chooseEmoji(e.target.value)} /></label>
+          <HelpHint label="知识库图标说明">选择或粘贴一个 Emoji，手机和浏览器扩展刷新知识库列表后也会显示。</HelpHint>
+        </div>
+        <div className="collection-emoji-choices" role="group" aria-label="常用知识库图标">
+          {COLLECTION_EMOJIS.map(icon => <button key={icon} type="button" aria-label={`选择图标 ${icon}`} aria-pressed={emoji===icon} onClick={()=>chooseEmoji(icon)}>{icon}</button>)}
+          <button type="button" aria-pressed={emoji===''} onClick={()=>chooseEmoji('')}>无图标</button>
+        </div>
+        {emojiError && <p id="collection-emoji-error" role="alert">{emojiError}</p>}
         <label>
           标记颜色
           <input
@@ -716,7 +734,7 @@ function Detail({
                 <option value="">未分类</option>
                 {collections.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.display_name || c.name}
                   </option>
                 ))}
               </select>

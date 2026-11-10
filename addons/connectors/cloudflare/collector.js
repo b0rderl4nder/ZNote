@@ -53,7 +53,7 @@ export function createCollector({local,relay,state={jobs:[]},save=async()=>{}}){
    for(const entry of jobs.values())await observe(entry);
    await persist();
    const updates=[...jobs.values()].map(({id,lease,status,message,local_id,title})=>({id,lease,status,message,...(local_id?{local_id}:{}),...(title?{title}:{})}));
-   const result=await relay('/connector/sync','POST',{collections:collections.map(({id,name})=>({id,name})),updates,can_claim:jobs.size<8});
+   const result=await relay('/connector/sync','POST',{collections:collections.map(({id,name,display_name})=>({id,name:display_name||name})),updates,can_claim:jobs.size<8});
    for(const entry of [...jobs.values()])if(['completed','failed'].includes(entry.status))jobs.delete(entry.id);
    if(result.job){
     const job=result.job;
