@@ -17,6 +17,7 @@ export async function publishDownloadReceipt(tabId, origin, input) {
   const receipt = {
     id: input.id,
     status: input.status,
+    operation: input.operation === 'save' ? 'save' : 'download',
     origin,
     message: input.message.slice(0, 700),
     updated: Number.isFinite(input.updated) ? Math.min(input.updated, Date.now()) : Date.now(),

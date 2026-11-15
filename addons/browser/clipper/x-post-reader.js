@@ -56,7 +56,10 @@
       if(originals.length||video)images.splice(0,images.length,...originals);
       // Never archive just text while the post's gated media is unavailable.
       const photoSlots=[...article.querySelectorAll('[data-testid="tweetPhoto"]')].filter(node=>own(node,article)&&!node.closest('[data-testid="videoPlayer"]'));
-      if((!video&&photoSlots.length>images.length)||[...article.querySelectorAll('[data-testid="sensitiveMediaWarning"]')].some(node=>own(node,article)))return {error:'请先在原帖中显示全部媒体，再采集'};
+      // X can retain the warning container after it has supplied all originals.
+      // Only block unavailable media, not the mere presence of that container.
+      const completePhotos=!video&&images.length>0&&photoSlots.length<=images.length;
+      if((!video&&photoSlots.length>images.length)||(!completePhotos&&[...article.querySelectorAll('[data-testid="sensitiveMediaWarning"]')].some(node=>own(node,article))))return {error:'请先在原帖中显示全部媒体，再采集'};
       if(!images.length&&!video&&[...article.querySelectorAll('[data-testid="sensitiveMediaContainer"]')].some(node=>own(node,article)))return {error:'请先在原帖中显示媒体，再采集'};
       const user=[...article.querySelectorAll('[data-testid="User-Name"]')].find(node=>own(node,article));
       const lines=(user?.innerText||user?.textContent||'').split('\n').map(s=>s.trim()).filter(Boolean);
