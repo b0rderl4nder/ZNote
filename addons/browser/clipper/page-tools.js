@@ -172,8 +172,9 @@
   function persistPosition(){const b=host.getBoundingClientRect();position={x:b.left,y:b.top,edge};request('page-tools-position',{position}).catch(e=>notice(e.message,{error:true,key:'tools'}));}
   function notice(message,{error=false,key='post',busy=false,download=false}={}){
     mount();
-    if(download){
-      const receipt={id:crypto.randomUUID(),status:error?'failed':'complete',message,updated:Date.now()};
+    if(download||(!busy&&['post','work'].includes(key))){
+      clear(key);
+      const receipt={id:crypto.randomUUID(),status:error?'failed':'complete',operation:download?'download':'save',message,updated:Date.now()};
       showReceipt(receipt);
       request('page-tools-receipt',{receipt}).catch(()=>{});
       return;
@@ -210,7 +211,8 @@
   function showReceipt(receipt){
     if(!receipt||lastDownload?.id===receipt.id||lastDownload?.updated>receipt.updated)return;
     lastDownload=receipt;
-    const label={complete:'下载完成',failed:'下载失败',stopped:'下载已停止'}[receipt.status];
+    const label=receipt.operation==='save'?{complete:'入库成功',failed:'入库失败',stopped:'入库已停止'}[receipt.status]:{complete:'下载完成',failed:'下载失败',stopped:'下载已停止'}[receipt.status];
+    receiptCard.querySelector('button').setAttribute('aria-label',receipt.operation==='save'?'关闭入库提示':'关闭下载提示');
     receiptCard.dataset.status=receipt.status;
     receiptCard.querySelector('.receipt-icon').textContent=receipt.status==='complete'?'✓':'!';
     receiptTitle.textContent=label;

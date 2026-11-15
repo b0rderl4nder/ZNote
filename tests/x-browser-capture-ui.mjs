@@ -22,15 +22,23 @@ try{
   await context.route('https://x.com/**',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<!doctype html><body style="background:#17201e;color:#eee;font:16px system-ui"><article data-testid="tweet" style="padding:20px;max-width:560px"><a href="${source}"><time>作品时间</time></a><div data-testid="User-Name">作者<br>@Tir_al_</div><img src="https://pbs.twimg.com/profile_images/avatar.jpg" width="30"><div data-testid="tweetText">正文第一行<br>第二行 #画画 <img alt="🌿"></div><div style="display:grid;grid-template-columns:1fr 1fr">${[1,2,3,4].map(i=>`<a href="${source}/photo/${i}"><div data-testid="tweetPhoto"><img width="120" height="96" src="https://pbs.twimg.com/media/own${i}?format=jpg&name=small"></div></a>`).join('')}</div><div data-testid="quoteTweet"><a href="https://x.com/quote/status/123"><time>引用帖</time></a><div data-testid="tweetText">引用正文</div><div data-testid="tweetPhoto"><img width="30" src="https://pbs.twimg.com/media/quote?format=jpg"></div></div><div role="group"><button>回复</button></div></article><article data-testid="tweet"><a href="https://x.com/other/status/234"><time>其他帖</time></a><div data-testid="tweetText">提到 <a href="${source}">原帖链接</a></div><div data-testid="tweetPhoto"><img width="20" src="https://pbs.twimg.com/media/other?format=jpg"></div></article>`}));
   context.setDefaultTimeout(10000);
   const page=await context.newPage();await page.goto(source);const save=page.locator('#znote-x-page-button');await save.waitFor({state:'attached'});
-  const click=node=>touch?node.tap():node.click();await click(page.locator('[data-znote-page-tools] .edge-tab'));await save.waitFor();
+  const click=async node=>{if(!await node.isVisible()){const tab=page.locator('[data-znote-page-tools] .edge-tab');if(await tab.isVisible())await (touch?tab.tap():tab.click());}return touch?node.tap():node.click();};await click(page.locator('[data-znote-page-tools] .edge-tab'));await save.waitFor();
   // Explicit full-text boundary and recovery; do not silently save truncation.
   await page.locator('article').first().evaluate(article=>{const b=document.createElement('button');b.dataset.testid='tweet-text-show-more-link';b.textContent='显示更多';article.append(b);});
   await click(save);await page.getByRole('status').filter({hasText:'展开这条推文'}).waitFor();assert.equal(runtime.captures.list().length,touch?1:0);
-  await page.locator('[data-testid="tweet-text-show-more-link"]').evaluate(node=>node.remove());await click(save);await save.filter({hasText:'已保存'}).waitFor({timeout:20000});
+  await page.locator('[data-testid="tweet-text-show-more-link"]').evaluate(node=>node.remove());
+  await page.locator('article').first().evaluate(article=>{const warning=document.createElement('div');warning.dataset.testid='sensitiveMediaWarning';warning.textContent='媒体提示';article.append(warning);});
+  await click(save);await save.filter({hasText:'已保存'}).waitFor({timeout:20000});
   assert.equal(embeds,0);const rows=runtime.db.prepare('SELECT * FROM items WHERE deleted_at IS NULL ORDER BY group_index').all();assert.equal(rows.length,4);assert.ok(rows.every(r=>r.content.startsWith('正文第一行\n第二行 #画画 🌿')&&r.source_url===source));assert.equal(new Set(rows.map(r=>r.group_key)).size,1);
   await click(save);await save.filter({hasText:'已保存'}).waitFor();assert.equal(runtime.db.prepare('SELECT count(*) n FROM items').get().n,4);
   await page.screenshot({path:join(dir,`${touch?'touch':'desktop'}-saved.png`)});
-  await click(page.getByRole('button',{name:'关闭采集提示'}));await page.locator('[data-znote-page-tools] .feedback').waitFor({state:'hidden'});
+  const tools=page.locator('[data-znote-page-tools]'),receipt=tools.locator('.download-receipt');
+  await receipt.filter({hasText:'入库成功'}).waitFor();
+  await page.mouse.move(0,0);await page.waitForTimeout(13000);
+  await tools.locator('.download-result').filter({hasText:'入库成功'}).waitFor();
+  await page.screenshot({path:join(dir,`${touch?'touch':'desktop'}-saved-collapsed.png`)});
+  await page.reload();await receipt.filter({hasText:'入库成功'}).waitFor();
+  await click(page.getByRole('button',{name:'关闭入库提示'}));await receipt.waitFor({state:'hidden'});
   // The popup and shared toolbar use the same reader; never read a quoted
   // post or a different article merely linking to the target.
   const data=await worker.evaluate(async({source})=>{const tabs=await chrome.tabs.query({});const tab=tabs.find(t=>t.url===source);return chrome.tabs.sendMessage(tab.id,{type:'x-post-page',url:source});},{source});assert.equal(data.browserPost.images.length,4);
